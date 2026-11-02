@@ -1,0 +1,17 @@
+{
+  "name": "md-review",
+  "version": "0.2.0",
+  "description": "Read a Markdown file in a pane beside the chat and quote selected passages, with their line numbers, into the prompt",
+  "license": "MIT",
+  "keywords": ["markdown", "review", "pane", "mod"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "The language of md-review's messages and buttons. auto follows Claude Code's language setting, then the locale.",
+      "options": ["auto", "en", "ja"],
+      "default": "auto"
+    }
+  }
+}

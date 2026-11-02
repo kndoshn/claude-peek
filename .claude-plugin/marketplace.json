@@ -1,0 +1,11 @@
+{
+  "name": "md-review",
+  "owner": { "name": "kndoshn" },
+  "plugins": [
+    {
+      "name": "md-review",
+      "source": "./",
+      "description": "Read a Markdown file in a pane beside the chat and quote selected passages, with their line numbers, into the prompt"
+    }
+  ]
+}

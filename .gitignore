@@ -1,0 +1,18 @@
+.DS_Store
+*.log
+*.swp
+*.swo
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*~
+.local/
+.claude/settings.local.json
+# Written by Claude Code when it loads the mod
+.claude-plugin/types/
+.mcpb-cache/
