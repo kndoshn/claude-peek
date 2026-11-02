@@ -9,7 +9,6 @@ import type { Kind } from './find'
 import type { Messages } from './messages'
 import { commandLocation, loadCommand } from './views/command'
 import { fileLocation, loadFile } from './views/file'
-import type { Opened } from './views/file'
 import { gitLocation, loadGit } from './views/git'
 import { loadTree, treeLocation } from './views/tree'
 
@@ -18,8 +17,14 @@ type Api = EngineInterface
 export const PANE = 'peek'
 // The width the docked pane asks for.
 const READING_COLUMNS = 100
+// The pane's header line and the gap under it, above a view's lines.
+const HEADER_ROWS = 2
 // The pane's background in a dark theme: the terminal's own, painted under nothing else.
 const DARK_BACKGROUND = 'transparent'
+
+// What loading a view came to: the pane's title, the label to report, how many lines the view
+// draws under its header, and the element to scroll to; or what to say about why not.
+export type Opened = { title: string; label: string; lines: number; scrollKey?: string } | { error: string }
 
 // Read and written only in this file (see views/file.ts).
 const nav = atom({ plugin: 'peek', key: 'nav' } as const, { isOpen: false, view: null, back: [] }, { shape: 'nav-1' })
@@ -82,7 +87,7 @@ async function openPane($: Api, opened: Exclude<Opened, { error: string }>): Pro
     columns: READING_COLUMNS,
     // Inline above the prompt: the content's height, up to what the layout spares, rather
     // than a third of the screen.
-    rows: opened.rows,
+    rows: opened.lines + HEADER_ROWS,
     ...(backgroundColor ? { backgroundColor } : {}),
   })
   // The open resolves once the pane is drawn, so the element is there to scroll to.
@@ -143,7 +148,7 @@ export async function reopen($: Api, say: Messages): Promise<Opened | undefined>
 // Shows `view` where it was, or its hint when it never showed anything; Back is left as it is.
 export async function switchView($: Api, say: Messages, view: ViewName): Promise<void> {
   const to = await here($, view)
-  const opened = to ? await load($, say, to, 'place') : { title: say.views[view], label: say.views[view], rows: 3 }
+  const opened = to ? await load($, say, to, 'place') : { title: say.views[view], label: say.views[view], lines: 1 }
   if ('error' in opened) {
     $.ui.toast(opened.error)
     return

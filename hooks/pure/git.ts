@@ -1,5 +1,7 @@
 // Reading git's output. Pure.
 
+import type { GitStatus, LogLine, PatchFile } from '../../types'
+
 // The marks of `git status --porcelain=v1 -z` by path from `prefix` (the shown folder within
 // the repository, '' for its top): M changed, A added, D deleted, R renamed, ? untracked, and
 // • on each folder that holds a mark. Paths outside the folder are left out.
@@ -25,23 +27,7 @@ export function statusBadges(output: string, prefix: string): Record<string, str
   return badges
 }
 
-export type GitFile = { path: string; mark: string }
-
-export type GitStatus = {
-  branch: string | null
-  oid: string | null
-  upstream?: string
-  ahead: number
-  behind: number
-  stash: number
-  staged: GitFile[]
-  unstaged: GitFile[]
-  untracked: string[]
-}
-
-// `git status --porcelain=v2 --branch --show-stash -z`: the branch (null when detached), its
-// commit (null before the first), the upstream and how far ahead and behind, the stash count,
-// and the files staged, changed but not staged (conflicts marked U), and untracked.
+// `git status --porcelain=v2 --branch --show-stash -z` as a status.
 export function parseStatus(output: string): GitStatus {
   const status: GitStatus = { branch: null, oid: null, ahead: 0, behind: 0, stash: 0, staged: [], unstaged: [], untracked: [] }
   const parts = output.split('\0')
@@ -79,10 +65,7 @@ export function parseStatus(output: string): GitStatus {
   return status
 }
 
-// A line of `git log --graph --format=%x1f%h%x1f%D%x1f%s%x1f%ar`: the graph, then the commit when
-// the line has one.
-export type LogLine = { graph: string; commit?: { hash: string; refs: string; subject: string; age: string } }
-
+// `git log --graph --format=%x1f%h%x1f%D%x1f%s%x1f%ar` as its lines.
 export function parseLog(output: string): LogLine[] {
   return output
     .replace(/\n$/, '')
@@ -94,10 +77,9 @@ export function parseLog(output: string): LogLine[] {
     })
 }
 
-// A commit's patch split by file: each file's path and its hunks, or what git says in their place
-// (a binary file, a mode change).
-export function splitPatch(patch: string): { path: string; hunks: string; note: string }[] {
-  const files: { path: string; hunks: string; note: string }[] = []
+// A commit's patch split by file.
+export function splitPatch(patch: string): PatchFile[] {
+  const files: PatchFile[] = []
   for (const chunk of patch.split(/^(?=diff --git )/m)) {
     if (!chunk.startsWith('diff --git ')) continue
     const lines = chunk.replace(/\n$/, '').split('\n')

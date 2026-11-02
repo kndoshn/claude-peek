@@ -149,6 +149,7 @@ claude plugin validate .         # マニフェストと hooks module を検査�
 | `hooks/ui/*.tsx` | パネル、入力欄の上の帯、表示ごとの描画 |
 | `hooks/find.ts` | ファイルを探して読む |
 | `hooks/prompt.ts` | 入力欄への引用と `@` の追加 |
+| `hooks/run.ts` | index のロックを取らない git の実行、時計、表示を読み直す間隔 |
 | `hooks/messages.ts` | 英語と日本語のメッセージと、どちらを使うか |
 | `hooks/pure/*.ts` | 純粋な関数（パス、引数の解析、引用、Markdown、行の差分、端末の出力、ツリー、git の出力） |
 | `tests/*.test.tsx` | エンジンを相手にした mod のテスト。`tests/support.tsx` がその下のエンジン |

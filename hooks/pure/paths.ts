@@ -47,12 +47,18 @@ export function absolute(at: Where, path: string): string {
   return normalize(`${at.cwd}/${path}`)
 }
 
+// An absolute path as pwd prints it: from the home with ~ under it, else the path itself.
+export function fromHome(home: string | undefined, path: string): string {
+  if (!home) return path
+  if (path === home) return '~'
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path
+}
+
 // An absolute path with its label: relative inside the working directory, from the home with
 // ~/ elsewhere under it, else the path itself.
 export function describe(at: Where, path: string): MdFile {
   if (path.startsWith(`${at.cwd}/`)) return { path, label: path.slice(at.cwd.length + 1) }
-  if (at.home && path.startsWith(`${at.home}/`)) return { path, label: `~${path.slice(at.home.length)}` }
-  return { path, label: path }
+  return { path, label: fromHome(at.home, path) }
 }
 
 // The files a reply named, the last named first: those its file tools took, then the paths in

@@ -1,6 +1,6 @@
 // A folder's tree as rows and as text, from the listings of the folders opened. Pure.
 
-export type TreeEntry = { name: string; kind: 'file' | 'dir' | 'other' }
+import type { TreeEntry } from '../../types'
 
 // One row: an entry with the lines that lead to it, its Git mark, whether git ignores it and
 // whether it is an open folder; or the row standing for the entries a long folder holds back.

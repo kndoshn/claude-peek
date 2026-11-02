@@ -5,6 +5,7 @@ import type { EngineInterface, SessionMessage } from 'claude-code'
 
 import { absolute, describe, MARKDOWN, named, rank } from './pure/paths'
 import type { Where } from './pure/paths'
+import { now, runGit } from './run'
 
 type Api = EngineInterface
 
@@ -67,10 +68,10 @@ export function resetFind(): void {
 
 // The project's files relative to the working directory: git's list (untracked ones too, ignored
 // ones not), else fd's outside a repository, else none.
-async function projectFiles($: Api): Promise<string[]> {
-  const git = await $.process.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard']).catch(() => undefined)
-  if (git?.exitCode === 0) return git.stdout.split('\0').filter(Boolean)
-  const fd = await $.process.run(['fd', '--type', 'f', '--hidden', '--exclude', '.git']).catch(() => undefined)
+async function projectFiles($: Api, cwd: string): Promise<string[]> {
+  const git = await runGit($, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd)
+  if (git !== undefined) return git.split('\0').filter(Boolean)
+  const fd = await $.process.run(['fd', '--type', 'f', '--hidden', '--exclude', '.git'], { cwd }).catch(() => undefined)
   return fd?.exitCode === 0 ? fd.stdout.split('\n').filter(Boolean) : []
 }
 
@@ -83,10 +84,10 @@ async function ghqRepos($: Api): Promise<string[]> {
 // The files the recent replies named that are there, the project's files and the repositories
 // of ghq, read side by side. Unless `fresh`, a listing taken in the last few seconds is reused.
 async function listings($: Api, at: Where, fresh: boolean): Promise<Listing> {
-  const now = await $.clock.now().catch(() => undefined)
-  if (!fresh && listed?.cwd === at.cwd && now !== undefined && now - listed.at < LIST_TTL_MS) return listed
-  const [named, files, repos] = await Promise.all([existing($, at, await recentMessages($), 'place'), projectFiles($), ghqRepos($)])
-  if (now !== undefined) listed = { cwd: at.cwd, at: now, named, files, repos }
+  const time = await now($)
+  if (!fresh && listed?.cwd === at.cwd && time !== undefined && time - listed.at < LIST_TTL_MS) return listed
+  const [named, files, repos] = await Promise.all([existing($, at, await recentMessages($), 'place'), projectFiles($, at.cwd), ghqRepos($)])
+  if (time !== undefined) listed = { cwd: at.cwd, at: time, named, files, repos }
   return { named, files, repos }
 }
 

@@ -3,6 +3,9 @@
 
 import { normalize } from './paths'
 
+// The most text the pane draws, under the 100000 characters a drawing takes.
+export const DRAW_LIMIT = 90_000
+
 // The file: href and path of a relative link target that names a Markdown file, resolved from
 // `dir`, or undefined for any other target (a URL, an anchor, a root path, another file).
 function markdownTarget(target: string, dir: string): { href: string; path: string } | undefined {

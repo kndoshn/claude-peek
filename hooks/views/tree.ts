@@ -4,48 +4,37 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Location, TreeState } from '../../types'
+import type { Location, TreeEntry, TreeState } from '../../types'
 import { where } from '../find'
 import type { Messages } from '../messages'
+import type { Opened } from '../nav'
 import { statusBadges } from '../pure/git'
 import { fenced } from '../pure/markdown'
-import { basename, describe } from '../pure/paths'
+import { basename, describe, fromHome } from '../pure/paths'
 import type { Where } from '../pure/paths'
 import { locate } from '../pure/quote'
 import { sortEntries, treeRows, treeText } from '../pure/tree'
-import type { TreeEntry } from '../pure/tree'
-import type { Opened } from './file'
+import { now, rereads, runGit } from '../run'
 
 type Api = EngineInterface
 
-// The pane's header line and the gap under it.
-const HEADER_ROWS = 2
 // How many rows the folders opened at first may add up to.
 const FIRST_ROWS = 200
-// How often the tree is read again while shown.
-const REREAD_MS = 5000
-// git without taking the index lock, which a git of Claude's may be holding.
-const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0' }
 
 // Read and written only in this file (see views/file.ts).
 const tree = atom({ plugin: 'peek', key: 'tree' } as const, null, { shape: 'tree-1' })
 
-// When the tree was last read, whether something may have changed it since, and whether a
-// read is under way.
-let readAt: number | undefined
-let isStale = false
-let reading = false
+// The tree is read again every 5 seconds while shown.
+const schedule = rereads(5000)
 
 // Forgets what an earlier load of the module was doing.
 export function resetTree(): void {
-  readAt = undefined
-  isStale = false
-  reading = false
+  schedule.reset()
 }
 
 // Something may have changed the files (a turn ended, Claude ran a command or edited a file).
 export function markTreeStale(): void {
-  isStale = true
+  schedule.markStale()
 }
 
 // The tree shown, for a drawing, which a change to it then redraws.
@@ -64,29 +53,26 @@ async function listDir($: Api, path: string): Promise<TreeEntry[] | undefined> {
 
 // The branch, Git's marks and what git ignores, when `root` is in a repository.
 async function gitInfo($: Api, root: string): Promise<{ branch?: string; badges: Record<string, string>; ignored: string[] }> {
-  const run = (argv: string[]) => $.process.run(argv, { cwd: root, env: GIT_ENV }).catch(() => undefined)
-  const top = await run(['git', 'rev-parse', '--show-toplevel', '--abbrev-ref', 'HEAD'])
-  if (top?.exitCode !== 0) return { badges: {}, ignored: [] }
-  const [toplevel = root, branch] = top.stdout.split('\n')
+  const top = await runGit($, ['rev-parse', '--show-toplevel', '--abbrev-ref', 'HEAD'], root)
+  if (top === undefined) return { badges: {}, ignored: [] }
+  const [toplevel = root, branch] = top.split('\n')
   const prefix = root === toplevel ? '' : root.slice(toplevel.length + 1)
   const [status, ignored] = await Promise.all([
-    run(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=normal']),
-    run(['git', 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']),
+    runGit($, ['status', '--porcelain=v1', '-z', '--untracked-files=normal'], root),
+    runGit($, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], root),
   ])
   return {
     ...(branch ? { branch } : {}),
-    badges: status?.exitCode === 0 ? statusBadges(status.stdout, prefix) : {},
-    ignored: ignored?.exitCode === 0 ? ignored.stdout.split('\0').filter(Boolean) : [],
+    badges: status === undefined ? {} : statusBadges(status, prefix),
+    ignored: ignored === undefined ? [] : ignored.split('\0').filter(Boolean),
   }
 }
 
 // How a folder is labelled: from the home for the header (as pwd would print it), from the
 // working directory for a quote's heading and a mention.
 function labels(at: Where, root: string): Pick<TreeState, 'label' | 'heading' | 'name'> {
-  const home = at.home
-  const label = home && root === home ? '~' : home && root.startsWith(`${home}/`) ? `~${root.slice(home.length)}` : root
   const heading = root === at.cwd ? './' : `${describe(at, root).label}/`
-  return { label, heading, name: `${basename(root) || '/'}/` }
+  return { label: fromHome(at.home, root), heading, name: `${basename(root) || '/'}/` }
 }
 
 // The entries of each of `folders` under `root`, listed side by side; a folder that cannot be
@@ -138,27 +124,19 @@ export async function loadTree($: Api, say: Messages, root: string): Promise<Ope
     ignored: info.ignored,
   }
   if (JSON.stringify(state) !== JSON.stringify(current)) await update($, tree, () => state)
-  readAt = await $.clock.now().catch(() => undefined)
-  isStale = false
-  return { title: state.name, label: state.heading, rows: treeRows(state).rows.length + HEADER_ROWS }
+  schedule.done(await now($))
+  return { title: state.name, label: state.heading, lines: treeRows(state).rows.length }
 }
 
 // Reads the shown folder again: its entries, the opened folders' and Git's marks.
-export async function refreshTree($: Api, say: Messages): Promise<void> {
-  if (reading) return
-  reading = true
-  try {
-    const shown = await read($, tree)
-    if (shown) await loadTree($, say, shown.root)
-  } finally {
-    reading = false
-  }
+async function reload($: Api, say: Messages): Promise<void> {
+  const shown = await read($, tree)
+  if (shown) await loadTree($, say, shown.root)
 }
 
-// Reads the tree again when it is due: something may have changed it, or REREAD_MS passed.
+// Reads the tree again when it is due: something may have changed it, or 5 seconds passed.
 export async function tickTree($: Api, say: Messages): Promise<void> {
-  const now = await $.clock.now().catch(() => undefined)
-  if (isStale || readAt === undefined || (now !== undefined && now - readAt >= REREAD_MS)) await refreshTree($, say)
+  if (schedule.isDue(await now($))) await schedule.run(() => reload($, say))
 }
 
 // Opens or closes a folder, and chooses it.

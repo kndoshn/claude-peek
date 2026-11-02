@@ -8,6 +8,7 @@ import type { FileDoc, FileMode, Location, MdFile } from '../../types'
 import { existing, load, mtime, recentMessages, sinceLastPrompt, where } from '../find'
 import type { Kind } from '../find'
 import type { Messages } from '../messages'
+import type { Opened } from '../nav'
 import { diff, lines } from '../pure/diff'
 import type { Change } from '../pure/diff'
 import { basename, describe, MARKDOWN } from '../pure/paths'
@@ -17,8 +18,6 @@ type Api = EngineInterface
 
 // The key of the Box that holds the lines a file was opened at, which the pane scrolls to.
 export const LINE_KEY = 'peek-line'
-// The pane's header line and the gap under it.
-const HEADER_ROWS = 2
 
 // Read and written only in this file: the state library lists a module's values from the
 // atoms each file names.
@@ -45,10 +44,6 @@ export function resetFile(): void {
   refreshing = false
   compared = undefined
 }
-
-// What opening a view came to: the pane's title and size, the label to report, and the element
-// to scroll to; or what to say about why not.
-export type Opened = { title: string; label: string; rows: number; scrollKey?: string } | { error: string }
 
 // Loads `path` into the file view, at `lines` when given. The same file loaded again keeps its
 // base and mode; another starts rendered (Markdown) or as source, its text as read the base.
@@ -79,7 +74,7 @@ export async function loadFile($: Api, say: Messages, path: string, at: [number,
   return {
     title: basename(path),
     label: described.label,
-    rows: lines(loaded.text).length + HEADER_ROWS,
+    lines: lines(loaded.text).length,
     ...(at ? { scrollKey: LINE_KEY } : {}),
   }
 }

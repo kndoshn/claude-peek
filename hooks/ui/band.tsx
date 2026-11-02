@@ -19,6 +19,13 @@ type Api = EngineInterface
 // The views the band switches between, in its order.
 const VIEWS: readonly ViewName[] = ['file', 'tree', 'git', 'command']
 
+// Puts `text` on the clipboard of the surface pressed on, and says so.
+async function copy($: Api, say: Messages, text: string | undefined, press: UiPressArgument): Promise<void> {
+  if (text === undefined) return
+  const copied = await $.ui.copy({ text, surface: press.surface })
+  if (copied.isCopied) $.ui.toast(say.copied)
+}
+
 // The buttons of the file view.
 async function fileButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): Promise<RenderElement[]> {
   const { Button } = $.ui.resolve(e)
@@ -53,16 +60,10 @@ async function fileButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages)
 // The buttons of the tree view.
 function treeButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
   const { Button } = $.ui.resolve(e)
-  const copy = async (press: UiPressArgument) => {
-    const text = await shownTreeText($, say)
-    if (text === undefined) return
-    const copied = await $.ui.copy({ text, surface: press.surface })
-    if (copied.isCopied) $.ui.toast(say.copied)
-  }
   return [
     <Button key="quote-tree" label={say.quoteTree} hotkey="t" onPress={() => quoteAll($, say)} />,
     <Button key="mention" label={say.mention} hotkey="a" onPress={() => mention($)} />,
-    <Button key="copy" label={say.copy} hotkey="c" onPress={copy} />,
+    <Button key="copy" label={say.copy} hotkey="c" onPress={async press => copy($, say, await shownTreeText($, say), press)} />,
   ]
 }
 
@@ -79,38 +80,37 @@ async function gitButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages):
 // The buttons of the command view.
 function commandButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
   const { Button } = $.ui.resolve(e)
-  const copy = async (press: UiPressArgument) => {
-    const output = await commandOutput($)
-    if (output === undefined) return
-    const copied = await $.ui.copy({ text: output, surface: press.surface })
-    if (copied.isCopied) $.ui.toast(say.copied)
-  }
   return [
     <Button key="quote-all" label={say.quoteAll} hotkey="t" onPress={() => quoteAll($, say)} />,
     <Button key="rerun" label={say.rerun} hotkey="r" onPress={() => rerunCommand($)} />,
-    <Button key="copy" label={say.copy} hotkey="c" onPress={copy} />,
+    <Button key="copy" label={say.copy} hotkey="c" onPress={async press => copy($, say, await commandOutput($), press)} />,
   ]
+}
+
+// The buttons of the view shown.
+async function viewButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages, view: ViewName): Promise<RenderElement[]> {
+  switch (view) {
+    case 'file':
+      return fileButtons($, e, say)
+    case 'tree':
+      return treeButtons($, e, say)
+    case 'git':
+      return gitButtons($, e, say)
+    case 'command':
+      return commandButtons($, e, say)
+  }
 }
 
 // The band, or undefined when there is nothing to show.
 export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<RenderElement | undefined> {
   const state = await navState($)
   const offered = await offeredFile($)
-  const isOpen = state.isOpen && state.view !== null
+  const view = state.isOpen ? state.view : null
+  const isOpen = view !== null
   if (e.props.hasSurvey || (!isOpen && !offered)) return undefined
   const { Box, Button, Text } = $.ui.resolve(e)
   const say = await messages($)
-  const buttons = !isOpen
-    ? []
-    : state.view === 'file'
-      ? await fileButtons($, e, say)
-      : state.view === 'tree'
-        ? treeButtons($, e, say)
-        : state.view === 'git'
-          ? await gitButtons($, e, say)
-          : state.view === 'command'
-          ? commandButtons($, e, say)
-          : []
+  const buttons = view === null ? [] : await viewButtons($, e, say, view)
 
   const openOffered = async () => {
     if (!offered) return
@@ -121,13 +121,13 @@ export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<R
   return (
     <Box gap={1} flexWrap="wrap">
       {isOpen &&
-        VIEWS.map(view => (
+        VIEWS.map(name => (
           <Button
-            key={`view:${view}`}
-            label={say.views[view]}
+            key={`view:${name}`}
+            label={say.views[name]}
             plain
-            {...(view === state.view ? {} : { dimColor: true })}
-            onPress={() => switchView($, say, view)}
+            {...(name === view ? {} : { dimColor: true })}
+            onPress={() => switchView($, say, name)}
           />
         ))}
       {isOpen && <Text dimColor>│</Text>}

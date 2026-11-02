@@ -159,6 +159,7 @@ claude plugin validate .         # check the manifest and the hooks module
 | `hooks/ui/*.tsx` | the pane, the band, and each view's drawing |
 | `hooks/find.ts` | finding files and reading them |
 | `hooks/prompt.ts` | quoting and mentioning into the prompt |
+| `hooks/run.ts` | running git without the index lock, the clock, and when a view is read again |
 | `hooks/messages.ts` | the messages in English and Japanese, and which language to use |
 | `hooks/pure/*.ts` | pure functions: paths, targets, quoting, Markdown, line diffs, terminal output, trees, git's output |
 | `tests/*.test.tsx` | the mod against the engine; `tests/support.tsx` is the engine beneath |

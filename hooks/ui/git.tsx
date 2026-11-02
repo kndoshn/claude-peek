@@ -6,8 +6,7 @@ import type { EngineInterface, RenderElement, RenderInput } from 'claude-code'
 import type { GitState } from '../../types'
 import type { Messages } from '../messages'
 import { follow } from '../nav'
-import { clip } from '../pure/markdown'
-import { DRAW_LIMIT } from './file'
+import { clip, DRAW_LIMIT } from '../pure/markdown'
 
 type Api = EngineInterface
 

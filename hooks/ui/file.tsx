@@ -5,15 +5,12 @@ import type { EngineInterface, RenderElement, RenderInput } from 'claude-code'
 import type { FileDoc } from '../../types'
 import type { Messages } from '../messages'
 import { follow } from '../nav'
-import { hunks } from '../pure/diff'
-import { clip, frontMatter, linkify } from '../pure/markdown'
+import { hunks, lines } from '../pure/diff'
+import { clip, DRAW_LIMIT, frontMatter, linkify } from '../pure/markdown'
 import { dirname } from '../pure/paths'
 import { changesOf, LINE_KEY } from '../views/file'
 
 type Api = EngineInterface
-
-// The most text the pane draws, under the 100000 characters a drawing takes.
-export const DRAW_LIMIT = 90_000
 // Of that, how much comes before the lines a file was opened at.
 const BEFORE_LIMIT = 20_000
 // The most links in one drawing the pane answers.
@@ -49,7 +46,7 @@ function around(text: string, at: [number, number]): { parts: { start: number; t
 export async function drawFile($: Api, e: RenderInput<'Pane'>, say: Messages, shown: FileDoc): Promise<RenderElement> {
   const { Box, Code, Markdown, Text } = $.ui.resolve(e)
 
-  const notes = [say.lineCount(shown.text === '' ? 0 : shown.text.replace(/\n$/, '').split('\n').length)]
+  const notes = [say.lineCount(lines(shown.text).length)]
   let isCut = false
   let body: RenderElement
   if (shown.mode === 'changes') {

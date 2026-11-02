@@ -2,6 +2,7 @@
 
 import type { EngineInterface } from 'claude-code'
 
+import type { ViewName } from '../types'
 import type { Messages } from './messages'
 import { navState } from './nav'
 import { quote } from './pure/quote'
@@ -13,7 +14,7 @@ import { treeBlock, treeMention, treeQuote } from './views/tree'
 type Api = EngineInterface
 
 // Appends a block (a quote) after the draft, a blank line apart, with a blank line after it.
-export async function appendBlock($: Api, block: string): Promise<void> {
+async function appendBlock($: Api, block: string): Promise<void> {
   const draft = (await $.prompt.read()).text
   const gap = draft === '' || draft.endsWith('\n\n') ? '' : draft.endsWith('\n') ? '\n' : '\n\n'
   await $.prompt.fill({ text: `${gap}${block}\n\n`, mode: 'append' })
@@ -26,6 +27,21 @@ async function appendWord($: Api, word: string): Promise<void> {
   await $.prompt.fill({ text: `${gap}${word} `, mode: 'append' })
 }
 
+// Where `selected` came from in `view`, as a heading and the text to quote; undefined when it is
+// not in the view.
+async function quoteFrom($: Api, say: Messages, view: ViewName, selected: string): Promise<{ head: string; text: string } | undefined> {
+  switch (view) {
+    case 'file':
+      return fileQuote($, selected)
+    case 'tree':
+      return treeQuote($, say, selected)
+    case 'git':
+      return gitQuote($, selected)
+    case 'command':
+      return commandQuote($, selected)
+  }
+}
+
 // Quotes the person's selection, headed by where it came from in the view shown. A selection the
 // engine places in the conversation (it carries a row's requestId) gets no heading; one without
 // could still span several rows of the conversation, so the view's text decides.
@@ -35,18 +51,8 @@ export async function quoteSelection($: Api, say: Messages): Promise<void> {
     $.ui.toast(say.selectFirst)
     return
   }
-  const state = await navState($)
-  const inPane = selected.requestId === undefined
-  const from =
-    inPane && state.view === 'file'
-      ? await fileQuote($, selected.text)
-      : inPane && state.view === 'command'
-        ? await commandQuote($, selected.text)
-        : inPane && state.view === 'tree'
-          ? await treeQuote($, say, selected.text)
-          : inPane && state.view === 'git'
-            ? await gitQuote($, selected.text)
-            : undefined
+  const view = (await navState($)).view
+  const from = selected.requestId === undefined && view !== null ? await quoteFrom($, say, view, selected.text) : undefined
   const text = from?.text ?? selected.text
   await appendBlock($, from?.head ? `${from.head}\n${quote(text)}` : quote(text))
 }

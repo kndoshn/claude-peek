@@ -45,10 +45,14 @@ export type CommandRun = {
   stoppedAfter?: number
 }
 
+// An entry of a folder as the tree lists it.
+export type TreeEntry = { name: string; kind: 'file' | 'dir' | 'other' }
+
 // The folder the tree view shows: its path, how it is labelled (the header, from the home; the
 // heading of a quote and a mention, from the working directory; the name atop the tree), its
 // branch in a repository, the folders opened and shown whole, the folder chosen, each opened
-// folder's entries, Git's marks and what git ignores.
+// folder's entries by its path from the root ('' for the root), Git's marks and what git
+// ignores.
 export type TreeState = {
   root: string
   label: string
@@ -58,38 +62,56 @@ export type TreeState = {
   expanded: string[]
   full: string[]
   selected: string
-  listings: Record<string, { name: string; kind: 'file' | 'dir' | 'other' }[]>
+  listings: Record<string, TreeEntry[]>
   badges: Record<string, string>
   ignored: string[]
 }
 
-// The Git view: the repository's top folder and how it is labelled, its status (branch, upstream,
-// stash, the files staged, not staged and untracked), the history's lines, and the commit opened
-// from the history with its details and its diff by file.
+// A file in Git's status and its mark.
+export type GitFile = { path: string; mark: string }
+
+// Git's status: the branch (null when detached), its commit (null before the first), the
+// upstream and how far ahead and behind, the stash count, and the files staged, changed but not
+// staged (conflicts marked U), and untracked.
+export type GitStatus = {
+  branch: string | null
+  oid: string | null
+  upstream?: string
+  ahead: number
+  behind: number
+  stash: number
+  staged: GitFile[]
+  unstaged: GitFile[]
+  untracked: string[]
+}
+
+// A line of the graph history: the graph, then the commit when the line has one.
+export type LogLine = { graph: string; commit?: { hash: string; refs: string; subject: string; age: string } }
+
+// A file a commit changed: its path and its hunks, or what git says in their place (a binary
+// file, a mode change).
+export type PatchFile = { path: string; hunks: string; note: string }
+
+// A commit opened from the history: its details, its changes by file in numbers, and its diff by
+// file.
+export type CommitDetails = {
+  hash: string
+  author: string
+  date: string
+  subject: string
+  body: string
+  stat: string
+  files: PatchFile[]
+}
+
+// The Git view: the repository's top folder and how it is labelled, its status, the history's
+// lines, and the commit opened from the history.
 export type GitState = {
   root: string
   label: string
-  status: {
-    branch: string | null
-    oid: string | null
-    upstream?: string
-    ahead: number
-    behind: number
-    stash: number
-    staged: { path: string; mark: string }[]
-    unstaged: { path: string; mark: string }[]
-    untracked: string[]
-  }
-  log: { graph: string; commit?: { hash: string; refs: string; subject: string; age: string } }[]
-  commit?: {
-    hash: string
-    author: string
-    date: string
-    subject: string
-    body: string
-    stat: string
-    files: { path: string; hunks: string; note: string }[]
-  }
+  status: GitStatus
+  log: LogLine[]
+  commit?: CommitDetails
 }
 
 declare module 'claude-code' {

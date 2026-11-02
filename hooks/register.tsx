@@ -10,10 +10,10 @@ import { parseTarget } from './pure/target'
 import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
 import { configureCommand, recentCommands, runCommand } from './views/command'
+import type { Opened } from './nav'
 import { offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
 import { markGitStale, resetGit, tickGit } from './views/git'
 import { markTreeStale, resetTree, tickTree } from './views/tree'
-import type { Opened } from './views/file'
 
 // peek: look at a file, a folder, Git or a command's output in a pane beside the chat, and quote
 // what is needed into the prompt with where it came from, so nothing is copied from another tab.

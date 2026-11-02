@@ -4,45 +4,39 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { GitState, Location } from '../../types'
+import type { CommitDetails, GitState, Location } from '../../types'
 import { where } from '../find'
 import type { Messages } from '../messages'
+import type { Opened } from '../nav'
 import { logLineText, parseLog, parseStatus, splitPatch } from '../pure/git'
+import { fromHome } from '../pure/paths'
 import { locate } from '../pure/quote'
-import type { Opened } from './file'
+import { now, rereads, runGit } from '../run'
 
 type Api = EngineInterface
 
 // How many commits the history shows.
 const LOG_COUNT = 40
-// How often Git is read again while shown.
-const REREAD_MS = 5000
-// git without taking the index lock, which a git of Claude's may be holding.
-const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0' }
-const STATUS = ['git', 'status', '--porcelain=v2', '--branch', '--show-stash', '-z', '--untracked-files=normal']
-const LOG = ['git', 'log', '--graph', '--format=%x1f%h%x1f%D%x1f%s%x1f%ar', '-n', String(LOG_COUNT), '--color=never']
+const STATUS = ['status', '--porcelain=v2', '--branch', '--show-stash', '-z', '--untracked-files=normal']
+const LOG = ['log', '--graph', '--format=%x1f%h%x1f%D%x1f%s%x1f%ar', '-n', String(LOG_COUNT), '--color=never']
 
 // Read and written only in this file (see views/file.ts).
 const git = atom({ plugin: 'peek', key: 'git' } as const, null, { shape: 'git-1' })
 
-// When Git was last read, the status it read then, whether something may have changed it since,
-// and whether a read is under way.
-let readAt: number | undefined
+// Git is read again every 5 seconds while shown.
+const schedule = rereads(5000)
+// The status the last read found, which tells on a timer whether anything moved.
 let lastStatus: string | undefined
-let isStale = false
-let reading = false
 
 // Forgets what an earlier load of the module was doing.
 export function resetGit(): void {
-  readAt = undefined
+  schedule.reset()
   lastStatus = undefined
-  isStale = false
-  reading = false
 }
 
 // Something may have changed the repository (a turn ended, Claude ran a command or edited a file).
 export function markGitStale(): void {
-  isStale = true
+  schedule.markStale()
 }
 
 // Git as shown, for a drawing, which a change to it then redraws.
@@ -50,18 +44,13 @@ export async function shownGit($: Api): Promise<GitState | null> {
   return read($, git)
 }
 
-async function run($: Api, argv: string[], cwd: string): Promise<string | undefined> {
-  const result = await $.process.run(argv, { cwd, env: GIT_ENV }).catch(() => undefined)
-  return result?.exitCode === 0 ? result.stdout : undefined
-}
-
 // A commit's details, its changes by file in numbers, and its diff by file (a merge's against its
 // first parent).
-async function readCommit($: Api, root: string, hash: string): Promise<GitState['commit'] | undefined> {
+async function readCommit($: Api, root: string, hash: string): Promise<CommitDetails | undefined> {
   const [head, stat = '', patch = ''] = await Promise.all([
-    run($, ['git', 'show', '-s', '--format=%h%x1f%an%x1f%ad%x1f%s%x1f%b', '--date=format:%Y-%m-%d %H:%M', hash], root),
-    run($, ['git', 'show', '--format=', '--stat=120', '--no-color', '--diff-merges=first-parent', hash], root),
-    run($, ['git', 'show', '--format=', '--patch', '--no-color', '--no-ext-diff', '--diff-merges=first-parent', hash], root),
+    runGit($, ['show', '-s', '--format=%h%x1f%an%x1f%ad%x1f%s%x1f%b', '--date=format:%Y-%m-%d %H:%M', hash], root),
+    runGit($, ['show', '--format=', '--stat=120', '--no-color', '--diff-merges=first-parent', hash], root),
+    runGit($, ['show', '--format=', '--patch', '--no-color', '--no-ext-diff', '--diff-merges=first-parent', hash], root),
   ])
   if (head === undefined) return undefined
   const [short = hash, author = '', date = '', subject = '', body = ''] = head.replace(/\n+$/, '').split('\u001f')
@@ -73,67 +62,59 @@ async function readCommit($: Api, root: string, hash: string): Promise<GitState[
 // what reads as it was shown is not written, so the pane is not drawn again for nothing.
 export async function loadGit($: Api, say: Messages, commit?: string): Promise<Opened> {
   const at = await where($)
-  const root = (await run($, ['git', 'rev-parse', '--show-toplevel'], at.cwd))?.trim()
+  const root = (await runGit($, ['rev-parse', '--show-toplevel'], at.cwd))?.trim()
   if (!root) return { error: say.notRepo }
   const current = await read($, git)
   const held = commit && current?.root === root && current.commit?.hash === commit ? current.commit : undefined
   const [status, log, details] = await Promise.all([
-    run($, STATUS, root),
-    run($, LOG, root),
+    runGit($, STATUS, root),
+    runGit($, LOG, root),
     held ?? (commit ? readCommit($, root, commit) : undefined),
   ])
   if (status === undefined) return { error: say.notRepo }
   if (commit && !details) return { error: say.noCommit(commit) }
-  const home = at.home
   const state: GitState = {
     root,
-    label: home && root.startsWith(`${home}/`) ? `~${root.slice(home.length)}` : root,
+    label: fromHome(at.home, root),
     status: parseStatus(status),
     log: log === undefined ? [] : parseLog(log),
     ...(details ? { commit: details } : {}),
   }
   if (JSON.stringify(state) !== JSON.stringify(current)) await update($, git, () => state)
-  readAt = await $.clock.now().catch(() => undefined)
+  schedule.done(await now($))
   lastStatus = status
-  isStale = false
   const s = state.status
   const lines = details
     ? details.stat.split('\n').length + details.files.reduce((sum, file) => sum + file.hunks.split('\n').length + 1, 0)
     : s.staged.length + s.unstaged.length + s.untracked.length + state.log.length + 8
-  return { title: 'git', label: details ? details.hash : say.views.git, rows: lines + 2 }
+  return { title: 'git', label: details ? details.hash : say.views.git, lines }
 }
 
-// Reads Git again, the commit opened kept open.
+// Reads Git again in full, the commit opened kept open.
+async function reload($: Api, say: Messages): Promise<void> {
+  const shown = await read($, git)
+  if (shown) await loadGit($, say, shown.commit?.hash)
+}
+
+// Reads Git again at once (the Refresh button).
 export async function refreshGit($: Api, say: Messages): Promise<void> {
-  if (reading) return
-  reading = true
-  try {
-    const shown = await read($, git)
-    if (shown) await loadGit($, say, shown.commit?.hash)
-  } finally {
-    reading = false
-  }
+  await schedule.run(() => reload($, say))
 }
 
-// Reads Git again when it is due: in full when something may have changed it (a turn ended,
-// Claude ran a command or edited a file); every REREAD_MS its status, and the rest only when the
-// status moved.
+// Reads Git again when it is due: in full when something may have changed it; else its status,
+// and the rest only when the status moved.
 export async function tickGit($: Api, say: Messages): Promise<void> {
-  const now = await $.clock.now().catch(() => undefined)
-  const isDue = isStale || readAt === undefined || (now !== undefined && now - readAt >= REREAD_MS)
-  if (!isDue || reading) return
-  reading = true
-  try {
+  const at = await now($)
+  if (!schedule.isDue(at)) return
+  await schedule.run(async wasStale => {
     const shown = await read($, git)
     if (!shown) return
-    if (!isStale && lastStatus !== undefined && (await run($, STATUS, shown.root)) === lastStatus) {
-      readAt = now
+    if (!wasStale && lastStatus !== undefined && (await runGit($, STATUS, shown.root)) === lastStatus) {
+      schedule.done(at)
       return
     }
-    await loadGit($, say, shown.commit?.hash)
-  } finally {
-    reading = false
-  }
+    await reload($, say)
+  })
 }
 
 // Where the Git view is, for Back.
@@ -150,7 +131,7 @@ function statusText(shown: GitState): string {
 }
 
 // The commit opened as text: its subject, details, numbers and diff.
-function commitText(commit: NonNullable<GitState['commit']>): string {
+function commitText(commit: CommitDetails): string {
   return [
     `${commit.hash} ${commit.subject}`,
     `${commit.author} · ${commit.date}`,

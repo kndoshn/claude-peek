@@ -7,17 +7,16 @@ import type { EngineInterface } from 'claude-code'
 import type { CommandRun, Location } from '../../types'
 import { where } from '../find'
 import type { Messages } from '../messages'
+import type { Opened } from '../nav'
 import { fenced } from '../pure/markdown'
 import { locate } from '../pure/quote'
 import { clean, dropShellNoise } from '../pure/terminal'
-import type { Opened } from './file'
+import { now } from '../run'
 
 type Api = EngineInterface
 
 // How many commands completion remembers.
 const HISTORY = 20
-// The pane's header line and the gap under it.
-const HEADER_ROWS = 2
 // The time a command may run when the setting says nothing usable.
 const DEFAULT_TIMEOUT_SECONDS = 30
 
@@ -57,7 +56,7 @@ export async function runCommand($: Api, text: string): Promise<void> {
   const shell = (await $.env.get('SHELL').catch(() => undefined)) || '/bin/sh'
   const base = { command: text, cwd: at.cwd, cwdLabel: at.cwd }
   let run: CommandRun
-  const started = await $.clock.now().catch(() => undefined)
+  const started = await now($)
   try {
     const result = await $.process.run([shell, '-ic', text], {
       cwd: at.cwd,
@@ -68,7 +67,7 @@ export async function runCommand($: Api, text: string): Promise<void> {
     run = { ...base, stdout: clean(result.stdout), stderr: dropShellNoise(clean(result.stderr)), exitCode: result.exitCode }
   } catch (error) {
     // The engine rejects a run that outlasts its time; any other rejection is a failure to run.
-    const ended = await $.clock.now().catch(() => undefined)
+    const ended = await now($)
     const ranOut = started !== undefined && ended !== undefined && ended - started >= timeoutSeconds * 1000
     const message = error instanceof Error ? error.message : String(error)
     run = ranOut
@@ -90,8 +89,7 @@ export async function loadCommand($: Api, say: Messages): Promise<Opened> {
   const shown = await read($, command)
   if (!shown) return { error: say.commandHint }
   const title = `$ ${shown.command}`
-  const rows = `${shown.stdout}${shown.stderr}`.split('\n').length + HEADER_ROWS
-  return { title, label: title, rows }
+  return { title, label: title, lines: `${shown.stdout}${shown.stderr}`.split('\n').length }
 }
 
 // Where the command view is, for Back.
