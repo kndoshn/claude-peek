@@ -97,7 +97,7 @@ export async function drawFile($: Api, e: RenderInput<'Pane'>, say: Messages, sh
   return (
     <Box flexDirection="column" gap={1}>
       <Box key="header">
-        <Text>
+        <Text wrap="truncate-start">
           <Text weight="bold">{shown.label}</Text>
           <Text dimColor>{notes.map(note => ` · ${note}`).join('')}</Text>
           {shown.isDeleted && <Text color="error">{` · ${say.deleted}`}</Text>}

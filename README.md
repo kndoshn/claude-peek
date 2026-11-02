@@ -42,7 +42,7 @@ background, as the transcript does, so light text stays readable in the ANSI the
 | `/peek src/a.ts` | opens the file: relative to the working directory, `~/...` or absolute |
 | `/peek src/a.ts:120` or `:120-130` | opens the source at those lines, marked, scrolled to them |
 | `/peek docs` | shows the folder's tree |
-| `/peek reg` | opens the best match for part of a name: the files the conversation named, the project's files and folders, then the repositories of ghq |
+| `/peek reg` | opens the best match that holds what you typed in its name or path: the files the conversation named, the project's files and folders, then the repositories of ghq. Looser matches, the letters only in order, are offered as completions instead |
 | `/peek git` | shows the repository's status and history |
 | `/peek !ls -la` | runs the command in your shell and shows its output |
 | `/peek` | opens the pane again where it was; the first time, the working directory's tree |

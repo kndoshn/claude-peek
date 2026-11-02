@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { PANE, button, engine, pane, peek, press, pressPane, start, turnEnds } from './support'
+import { PANE, autocomplete, button, engine, pane, peek, press, pressPane, start, turnEnds } from './support'
 import type { Files } from './support'
 
 // The rows of the tree the pane draws, as their text.
@@ -27,6 +27,8 @@ test('/peek <folder> shows its tree, small folders open, .git left out', async (
   expect(r.opened).toEqual(['docs/'])
   expect((await pane($)).header).toBe('/proj/docs')
   expect(await rows($)).toEqual(['├── guide/', '│   ├── b.md', '│   └── c.md', '├── .hidden', '└── a.md'])
+  // A long path keeps its end, the folder and the branch, on one row.
+  expect((await pane($)).headingWrap).toBe('truncate-start')
 })
 
 test('a folder opens and closes when clicked; a file opens in the file view, and Back returns', async ($, on) => {
@@ -131,6 +133,16 @@ test('part of a name finds a folder or a repository of ghq', async ($, on) => {
   expect((await pane($)).header).toBe('~/repos/github.com/pentim/shok')
   await peek($, 'guid')
   expect(r.opened).toEqual(['shok/', 'guide/'])
+})
+
+test('letters that only appear in order in a name open nothing, and completion still offers it', async ($, on) => {
+  const r = engine(on, { '/home/me/repos/github.com/me/kabutan-chart-extension/README.md': 'r' })
+  r.commands.ghq = { exitCode: 0, stdout: '/home/me/repos/github.com/me/kabutan-chart-extension\n' }
+
+  expect((await peek($, 'tree')).text).toContain('Nothing matches "tree"')
+  expect(r.opened).toEqual([])
+  const offered = (await autocomplete($, '/peek tree')).suggestions.map(s => s.label)
+  expect(offered).toContain('kabutan-chart-extension/')
 })
 
 test('the tree is not read while another tab stands in front of the pane', async ($, on) => {

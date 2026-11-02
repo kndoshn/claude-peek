@@ -48,7 +48,7 @@ export async function drawTree($: Api, e: RenderInput<'Pane'>, say: Messages, sh
   return (
     <Box flexDirection="column" gap={1}>
       <Box key="header">
-        <Text>
+        <Text wrap="truncate-start">
           <Text weight="bold">{shown.label}</Text>
           {shown.branch ? <Text dimColor>{` · ${shown.branch}`}</Text> : null}
           {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}

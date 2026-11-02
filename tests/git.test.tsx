@@ -61,6 +61,7 @@ test('/peek git shows the branch, the changes by kind and the history', async ($
 
   expect((await peek($, 'git')).text).toBe('Opened Git')
   expect((await pane($)).header).toBe('/proj · main ↑1 ↓2 · stash 1')
+  expect((await pane($)).headingWrap).toBe('truncate-start')
   expect(await texts($, 'Button')).toEqual([
     'M src/a.ts',
     'M docs/b.md',
@@ -93,8 +94,9 @@ test('a commit opens its details and diff, the band puts it in the prompt, and B
   await peek($, 'git')
 
   await pressPane($, 'commit:abc1234')
-  const { header, codes } = await pane($)
+  const { header, headingWrap, codes } = await pane($)
   expect(header).toBe('abc1234 Fix the parser')
+  expect(headingWrap).toBe('truncate-end')
   expect(codes.map(code => [code.format ?? 'source', code.source])).toEqual([
     ['source', SHOW_STAT],
     ['diff', '@@ -1,2 +1,3 @@\n one\n-two\n+2\n+three\n'],

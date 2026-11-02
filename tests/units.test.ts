@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { diff, hunks } from '../hooks/pure/diff'
 import { clip, fenced, frontMatter, linkify } from '../hooks/pure/markdown'
-import { absolute, describe, dirname, named, normalize, rank } from '../hooks/pure/paths'
+import { absolute, closest, describe, dirname, named, normalize, rank } from '../hooks/pure/paths'
 import { cite, locate, quote, ungutter } from '../hooks/pure/quote'
 import { parseTarget } from '../hooks/pure/target'
 import { clean, dropShellNoise } from '../hooks/pure/terminal'
@@ -121,6 +121,13 @@ test('ranking puts a name match before a path match before loose ones, and drops
   const labels = ['docs/setup.md', 'set/up/readme.md', 'notes/s-e-t-u-p.md', 'other.md']
   expect(rank('setup', labels)).toEqual(['docs/setup.md', 'notes/s-e-t-u-p.md', 'set/up/readme.md'])
   expect(rank('SETUP', ['docs/setup.md'])).toEqual(['docs/setup.md'])
+})
+
+test('the closest label holds the query as it was typed, in its name or its path, never loosely', () => {
+  expect(closest('setup', ['notes/s-e-t-u-p.md', 'docs/setup.md'])).toBe('docs/setup.md')
+  expect(closest('SETUP', ['notes/setup/a.md'])).toBe('notes/setup/a.md')
+  expect(closest('tree', ['kabutan-chart-extension/', 'notes/s-e-t-u-p.md'])).toBeUndefined()
+  expect(closest('x', [])).toBeUndefined()
 })
 
 test('a quote marks every line and leaves blank lines bare', () => {

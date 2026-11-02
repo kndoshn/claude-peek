@@ -25,7 +25,7 @@ export async function drawCommand($: Api, e: RenderInput<'Pane'>, say: Messages,
   return (
     <Box flexDirection="column" gap={1}>
       <Box key="header">
-        <Text>
+        <Text wrap="truncate-middle">
           <Text weight="bold">{`$ ${shown.command}`}</Text>
           {ended}
           {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}

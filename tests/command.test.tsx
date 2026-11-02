@@ -10,8 +10,10 @@ test('/peek !command runs it in the person\'s interactive shell and shows its ou
   expect((await peek($, '!ls -la')).text).toBe('Opened $ ls -la')
   expect(r.ran).toEqual([{ argv: ['/bin/zsh', '-ic', 'ls -la'], cwd: CWD, env: { PEEK: '1' }, stdin: '', timeoutMs: 30000 }])
   expect(r.opened).toEqual(['$ ls -la'])
-  const { header, codes } = await pane($)
+  const { header, headingWrap, codes } = await pane($)
   expect(header).toBe('$ ls -la · exit 0')
+  // A long command keeps its start and how it ended.
+  expect(headingWrap).toBe('truncate-middle')
   expect(codes.map(code => code.source)).toEqual(['a.md\nb.md\n'])
 })
 

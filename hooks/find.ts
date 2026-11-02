@@ -3,7 +3,7 @@
 
 import type { EngineInterface, SessionMessage } from 'claude-code'
 
-import { absolute, describe, MARKDOWN, named, rank } from './pure/paths'
+import { absolute, closest, describe, MARKDOWN, named } from './pure/paths'
 import type { Where } from './pure/paths'
 import { now, runGit } from './run'
 
@@ -117,7 +117,7 @@ export async function resolvePlace($: Api, at: Where, text: string, kind: Kind):
   const stat = await $.fs.stat(path).catch(() => undefined)
   if (stat?.kind === 'file') return { path, isDir: false }
   if (stat?.kind === 'dir' && kind === 'place') return { path, isDir: true }
-  const [best] = rank(text, await candidates($, at, kind, true))
+  const best = closest(text, await candidates($, at, kind, true))
   if (best === undefined) return undefined
   return { path: absolute(at, best.replace(/\/$/, '')), isDir: best.endsWith('/') }
 }

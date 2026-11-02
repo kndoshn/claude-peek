@@ -28,8 +28,9 @@ test('/md <path> opens the file relative to the working directory', async ($, on
 
   expect((await md($, 'docs/plan.md')).text).toBe('Opened docs/plan.md')
   expect(r.opened).toEqual(['plan.md'])
-  const { header, markdown } = await pane($)
+  const { header, headingWrap, markdown } = await pane($)
   expect(header).toBe('docs/plan.md · 3 lines')
+  expect(headingWrap).toBe('truncate-start')
   expect(markdown?.text).toBe('# Plan\n\nBody')
 })
 

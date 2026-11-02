@@ -31,7 +31,7 @@ export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, sho
     return (
       <Box flexDirection="column" gap={1}>
         <Box key="header">
-          <Text>
+          <Text wrap="truncate-end">
             <Text color="warning">{commit.hash}</Text>
             <Text weight="bold">{` ${commit.subject}`}</Text>
           </Text>
@@ -72,7 +72,9 @@ export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, sho
   return (
     <Box flexDirection="column" gap={1}>
       <Box key="header">
-        <Text weight="bold">{heading(shown, say)}</Text>
+        <Text weight="bold" wrap="truncate-start">
+          {heading(shown, say)}
+        </Text>
       </Box>
       {section(say.staged(s.staged.length), s.staged.map(f => fileRow('staged', f.path, f.mark)))}
       {section(say.unstaged(s.unstaged.length), s.unstaged.map(f => fileRow('unstaged', f.path, f.mark)))}

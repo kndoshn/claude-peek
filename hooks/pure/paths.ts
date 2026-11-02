@@ -99,21 +99,33 @@ function fuzzy(query: string, text: string): boolean {
   return true
 }
 
-// The labels matching `query`, best first: the query inside the file name, inside the path,
-// then loosely in the file name and in the path. Within a rank the given order stays.
-export function rank(query: string, labels: readonly string[]): string[] {
+// How well a label matches `query`, best first: the query inside the file name (0), inside the
+// path (1), then loosely in the file name (2) and in the path (3); NO_MATCH otherwise.
+const NO_MATCH = 4
+const LOOSE = 2
+function tier(query: string, label: string): number {
   const q = query.toLowerCase()
-  const tier = (label: string): number => {
-    const name = basename(label.replace(/\/$/, '')).toLowerCase()
-    if (name.includes(q)) return 0
-    if (label.toLowerCase().includes(q)) return 1
-    if (fuzzy(q, name)) return 2
-    if (fuzzy(q, label)) return 3
-    return 4
-  }
+  const name = basename(label.replace(/\/$/, '')).toLowerCase()
+  if (name.includes(q)) return 0
+  if (label.toLowerCase().includes(q)) return 1
+  if (fuzzy(q, name)) return LOOSE
+  if (fuzzy(q, label)) return 3
+  return NO_MATCH
+}
+
+// The labels matching `query`, best first by tier. Within a tier the given order stays.
+export function rank(query: string, labels: readonly string[]): string[] {
   return labels
-    .map((label, i) => ({ label, i, t: tier(label) }))
-    .filter(x => x.t < 4)
+    .map((label, i) => ({ label, i, t: tier(query, label) }))
+    .filter(x => x.t < NO_MATCH)
     .sort((a, b) => a.t - b.t || a.i - b.i)
     .map(x => x.label)
+}
+
+// The label a command opens for `query`: the best that holds the query as typed. A loose match
+// (its letters in order) is only offered in completion, since across every repository of ghq
+// one is nearly always there and seldom the one meant.
+export function closest(query: string, labels: readonly string[]): string | undefined {
+  const [best] = rank(query, labels)
+  return best !== undefined && tier(query, best) < LOOSE ? best : undefined
 }

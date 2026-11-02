@@ -268,15 +268,19 @@ export async function button($: Engine, key: string): Promise<string | undefined
   return found?.text
 }
 
-// What the pane draws: its header, every Markdown's and Code's props, and the text of any key.
+// What the pane draws: its header and how a header too wide for the pane is cut, every
+// Markdown's and Code's props, and the text of any key.
 export async function pane($: Engine, key?: string) {
   const ui = await $.ui.mount(PANE)
   const markdown = (await ui.find({ type: 'Markdown' }))?.props
   const codes = (await ui.findAll({ type: 'Code' })).map(found => found.props)
-  const header = (await ui.find({ key: 'header' }))?.text
+  const found = await ui.find({ key: 'header' })
+  const header = found?.text
+  const [heading] = (found?.children ?? []) as Array<{ props?: { wrap?: unknown } } | string>
+  const headingWrap = typeof heading === 'object' ? heading.props?.wrap : undefined
   const keyed = key ? await ui.find({ key }) : undefined
   await ui.unmount()
-  return { markdown, code: codes[0], codes, header, keyed }
+  return { markdown, code: codes[0], codes, header, headingWrap, keyed }
 }
 
 // The Markdown text the pane draws.
