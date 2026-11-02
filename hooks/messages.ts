@@ -41,6 +41,8 @@ export type Messages = {
   commandHint: string
   exit: (code: number) => string
   stoppedAfter: (seconds: number) => string
+  running: string
+  took: (seconds: number) => string
   noOutput: string
   stderr: string
   quoteAll: string
@@ -105,6 +107,8 @@ const MESSAGES: Record<Lang, Messages> = {
     commandHint: '/peek !ls -la runs a command and shows its output here',
     exit: code => `exit ${code}`,
     stoppedAfter: seconds => `stopped after ${seconds} s`,
+    running: 'running…',
+    took: seconds => `${seconds} s`,
     noOutput: 'no output',
     stderr: 'stderr',
     quoteAll: 'Quote output',
@@ -167,6 +171,8 @@ const MESSAGES: Record<Lang, Messages> = {
     commandHint: '/peek !ls -la でコマンドを実行し、出力をここに表示します',
     exit: code => `終了コード ${code}`,
     stoppedAfter: seconds => `${seconds} 秒で止めました`,
+    running: '実行中…',
+    took: seconds => `${seconds} 秒`,
     noOutput: '出力なし',
     stderr: '標準エラー出力',
     quoteAll: '出力を引用',

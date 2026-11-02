@@ -125,8 +125,9 @@ names a `.md` file, the row above the prompt offers **Open docs/plan.md**; **×*
   shell would, in the working directory, so your aliases and functions work.
 - The output shows in the pane and stays out of the conversation, unlike `!` mode; quote only the
   lines you need.
-- The header shows the command and its exit code. Standard error shows apart. Colours and other
-  escape sequences are removed.
+- The pane opens as the command starts, its header saying it is running. Once it ended, the header
+  shows the exit code and, from a second up, how long it took. Standard error shows apart. Colours
+  and other escape sequences are removed.
 - A command is stopped after 30 seconds (see [Settings](#settings)); one that never ends, such as
   `tail -f`, is not for this view.
 - Like `!` mode, the command runs outside Claude's sandbox.
@@ -150,7 +151,7 @@ focus the row (ctrl+x tab, or a click) and press its key.
 | **Commit to prompt** | an open commit | `a` | appends the commit's hash and subject |
 | **Refresh** | Git | `r` | reads Git again at once |
 | **Quote output** | command | `t` | appends the whole output under the command, in a code block |
-| **Run again** | command | `r` | runs the command anew, in the folder it ran in |
+| **Run again** | command | `r` | runs the command anew, in the folder it ran in, keeping the output shown until it ends |
 | **Copy** | tree, command | `c` | puts the tree or the output on the clipboard |
 | **← Back** | after a link or a click | `b` | returns to where you came from |
 | **Close** | always | | closes the pane |

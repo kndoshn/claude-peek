@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { autocomplete, button, CWD, engine, pane, peek, press } from './support'
+import type { Run } from './support'
 
 test('/peek !command runs it in the person\'s interactive shell and shows its output', async ($, on) => {
   const r = engine(on, {})
@@ -9,7 +10,8 @@ test('/peek !command runs it in the person\'s interactive shell and shows its ou
 
   expect((await peek($, '!ls -la')).text).toBe('Opened $ ls -la')
   expect(r.ran).toEqual([{ argv: ['/bin/zsh', '-ic', 'ls -la'], cwd: CWD, env: { PEEK: '1' }, stdin: '', timeoutMs: 30000 }])
-  expect(r.opened).toEqual(['$ ls -la'])
+  // Opened while it ran, then fitted to its output.
+  expect(r.opened).toEqual(['$ ls -la', '$ ls -la'])
   const { header, headingWrap, codes } = await pane($)
   expect(header).toBe('$ ls -la · exit 0')
   // A long command keeps its start and how it ended.
@@ -170,14 +172,103 @@ test('Git not yet opened outside a repository says so and leaves the pane as it 
 
 test('inline, the pane is as tall as the output, and the errors with their heading', async ($, on) => {
   const r = engine(on, {})
-  r.commands['/bin/sh'] = { exitCode: 1, stdout: 'a\nb\n', stderr: 'e\n' }
-  await peek($, '!x')
-  r.commands['/bin/sh'] = { exitCode: 1, stdout: '', stderr: 'e\n' }
-  await peek($, '!y')
-  r.commands['/bin/sh'] = { exitCode: 0, stdout: '' }
-  await peek($, '!z')
+  const rows = async (command: string, run: Run) => {
+    r.commands['/bin/sh'] = run
+    await peek($, command)
+    return r.opens.at(-1)?.rows
+  }
 
   // The header and its gap, then: the output, a gap, the heading, a gap, the errors; the errors
   // alone; or the line that says there is no output.
-  expect(r.opens.map(open => open.rows)).toEqual([2 + 2 + 3 + 1, 2 + 2 + 1, 2 + 1])
+  expect(await rows('!x', { exitCode: 1, stdout: 'a\nb\n', stderr: 'e\n' })).toBe(2 + 2 + 3 + 1)
+  expect(await rows('!y', { exitCode: 1, stdout: '', stderr: 'e\n' })).toBe(2 + 2 + 1)
+  expect(await rows('!z', { exitCode: 0, stdout: '' })).toBe(2 + 1)
+})
+
+// The test runner's timer, which the engine's types leave out.
+const later = (globalThis as unknown as { setTimeout: (run: () => void, ms: number) => unknown }).setTimeout
+
+// Waits until `ready` holds, letting the plugin's steps under way go on meanwhile.
+async function until(ready: () => boolean) {
+  for (let i = 0; i < 200 && !ready(); i += 1) await new Promise<void>(resolve => later(resolve, 0))
+  expect(ready()).toBe(true)
+}
+
+test('the pane opens while the command runs, saying so, and fits the output once it ended', async ($, on) => {
+  const r = engine(on, {})
+  let finish: (run: Run) => void = () => undefined
+  r.commands['/bin/sh'] = () => new Promise<Run>(resolve => (finish = resolve))
+
+  const ran = peek($, '!make')
+  await until(() => r.opened.length === 1)
+  const { header, codes, keyed } = await pane($, 'no-output')
+  expect(header).toBe('$ make · running…')
+  expect(codes).toEqual([])
+  expect(keyed).toBeUndefined()
+
+  finish({ exitCode: 0, stdout: 'a\nb\n' })
+  expect((await ran).text).toBe('Opened $ make')
+  expect((await pane($)).header).toBe('$ make · exit 0')
+  expect(r.opens.map(open => open.rows)).toEqual([2 + 1, 2 + 2])
+})
+
+test('Run again keeps the output shown while it runs, and a press meanwhile runs nothing more', async ($, on) => {
+  const r = engine(on, {})
+  r.commands['/bin/sh'] = { exitCode: 0, stdout: 'one\n' }
+  await peek($, '!date')
+  let finish: (run: Run) => void = () => undefined
+  r.commands['/bin/sh'] = () => new Promise<Run>(resolve => (finish = resolve))
+
+  const again = press($, 'rerun')
+  await until(() => r.ran.length === 2)
+  expect((await pane($)).header).toBe('$ date · running…')
+  expect((await pane($)).code?.source).toBe('one\n')
+  await press($, 'rerun')
+  expect(r.ran).toHaveLength(2)
+
+  finish({ exitCode: 0, stdout: 'one\ntwo\nthree\n' })
+  await again
+  expect((await pane($)).header).toBe('$ date · exit 0')
+  expect(r.opens.at(-1)?.rows).toBe(2 + 3)
+})
+
+test('a command run while another runs is the one shown when the first ends', async ($, on) => {
+  const r = engine(on, {})
+  let finish: (run: Run) => void = () => undefined
+  r.commands['/bin/sh'] = () => new Promise<Run>(resolve => (finish = resolve))
+  const slow = peek($, '!slow')
+  await until(() => r.ran.length === 1)
+  r.commands['/bin/sh'] = { exitCode: 0, stdout: 'fast\n' }
+  await peek($, '!fast')
+
+  finish({ exitCode: 0, stdout: 'slow\n' })
+  await slow
+  const { header, code } = await pane($)
+  expect(header).toBe('$ fast · exit 0')
+  expect(code?.source).toBe('fast\n')
+})
+
+test('a command that took a second or more says how long', async ($, on) => {
+  const r = engine(on, {})
+  r.commands['/bin/sh'] = async () => {
+    await r.clock.advance(2_400)
+    return { exitCode: 0, stdout: 'ok\n' }
+  }
+
+  await peek($, '!make')
+  expect((await pane($)).header).toBe('$ make · exit 0 · 2 s')
+})
+
+test('the pane left for another view while the command ran stays there when it ends', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a' })
+  let finish: (run: Run) => void = () => undefined
+  r.commands['/bin/sh'] = () => new Promise<Run>(resolve => (finish = resolve))
+  const ran = peek($, '!make')
+  await until(() => r.opened.length === 1)
+  await peek($, 'a.md')
+
+  finish({ exitCode: 0, stdout: 'done\n' })
+  await ran
+  expect((await pane($)).markdown?.text).toBe('a')
+  expect(r.opened).toEqual(['$ make', 'a.md'])
 })

@@ -73,8 +73,12 @@ async function background($: Api): Promise<string | undefined> {
   return typeof theme === 'string' && theme.startsWith('dark') ? DARK_BACKGROUND : undefined
 }
 
+// The rows the pane was last opened with, so fitting it again asks only for a change.
+let openedRows: number | undefined
+
 async function openPane($: Api, opened: Exclude<Opened, { error: string }>): Promise<void> {
   const backgroundColor = await background($)
+  openedRows = opened.lines + HEADER_ROWS
   await $.ui.open({
     id: PANE,
     // A file's or a folder's name may hold a control character, which a title refuses.
@@ -163,6 +167,14 @@ export async function switchView($: Api, say: Messages, view: ViewName): Promise
   }
   await update($, nav, current => ({ ...current, isOpen: true, view }))
   await openPane($, opened)
+}
+
+// Fits the pane to what `view` shows now (a command that ended), while the pane is open on it.
+export async function refit($: Api, say: Messages, view: ViewName): Promise<void> {
+  if ((await openView($)) !== view) return
+  const to = await here($, view)
+  const opened = to ? await load($, say, to, 'place') : undefined
+  if (opened && !('error' in opened) && opened.lines + HEADER_ROWS !== openedRows) await openPane($, opened)
 }
 
 // The view the pane is open on, or null while it is closed.

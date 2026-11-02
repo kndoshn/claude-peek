@@ -50,15 +50,26 @@ async function remember($: Api, text: string): Promise<void> {
   await $.store.set('commands', commands).catch(() => undefined)
 }
 
-// Runs `text` in the person's shell, interactive so that their aliases and functions are there,
-// in `cwd` (the working directory unless given), and keeps what it printed. PEEK=1 lets a shell's
-// startup files turn on what they keep off inside Claude Code.
-export async function runCommand($: Api, text: string, cwd?: string): Promise<void> {
-  const dir = cwd ?? (await where($)).cwd
+// The number of the latest run, so a run that ends after a later one started leaves that one
+// shown, and whether the latest is under way (a running mark an earlier load of the module left
+// is not).
+let latest = 0
+let isBusy = false
+
+// Forgets what an earlier load of the module was running.
+export function resetCommand(): void {
+  latest = 0
+  isBusy = false
+}
+
+// What a run came to: what it printed and how it ended, or why it did not run.
+async function execute($: Api, text: string, dir: string): Promise<Omit<CommandRun, 'command' | 'cwd'>> {
   const shell = (await $.env.get('SHELL').catch(() => undefined)) || '/bin/sh'
-  const base = { command: text, cwd: dir }
-  let run: CommandRun
   const started = await now($)
+  const elapsed = async () => {
+    const ended = await now($)
+    return started !== undefined && ended !== undefined ? ended - started : undefined
+  }
   try {
     const result = await $.process.run([shell, '-ic', text], {
       cwd: dir,
@@ -66,24 +77,47 @@ export async function runCommand($: Api, text: string, cwd?: string): Promise<vo
       stdin: '',
       timeoutMs: timeoutSeconds * 1000,
     })
-    run = { ...base, stdout: clean(result.stdout), stderr: dropShellNoise(clean(result.stderr)), exitCode: result.exitCode }
+    const seconds = Math.floor(((await elapsed()) ?? 0) / 1000)
+    return { stdout: clean(result.stdout), stderr: dropShellNoise(clean(result.stderr)), exitCode: result.exitCode, ...(seconds >= 1 ? { seconds } : {}) }
   } catch (error) {
     // The engine rejects a run that outlasts its time; any other rejection is a failure to run.
-    const ended = await now($)
-    const ranOut = started !== undefined && ended !== undefined && ended - started >= timeoutSeconds * 1000
+    const ms = await elapsed()
+    if (ms !== undefined && ms >= timeoutSeconds * 1000) return { stdout: '', stderr: '', exitCode: null, stoppedAfter: timeoutSeconds }
     const message = error instanceof Error ? error.message : String(error)
-    run = ranOut
-      ? { ...base, stdout: '', stderr: '', exitCode: null, stoppedAfter: timeoutSeconds }
-      : { ...base, stdout: '', stderr: clean(message), exitCode: null }
+    return { stdout: '', stderr: clean(message), exitCode: null }
   }
-  await update($, command, () => run)
-  await remember($, text)
 }
 
-// Runs the last command again, where it ran.
-export async function rerunCommand($: Api): Promise<void> {
+// Starts `text` in the person's shell, interactive so that their aliases and functions are there,
+// in `cwd` (the working directory unless given), and marks it running at once: the same command
+// keeps what it printed before until it ends. `ended` resolves once it ended, with whether its
+// output is the one shown (a later run took its place otherwise). PEEK=1 lets a shell's startup
+// files turn on what they keep off inside Claude Code.
+export async function startCommand($: Api, text: string, cwd?: string): Promise<{ ended: Promise<boolean> }> {
+  const dir = cwd ?? (await where($)).cwd
+  latest += 1
+  const id = latest
+  isBusy = true
+  await update($, command, shown =>
+    shown?.command === text && shown.cwd === dir
+      ? { ...shown, isRunning: true }
+      : { command: text, cwd: dir, stdout: '', stderr: '', exitCode: null, isRunning: true },
+  )
+  await remember($, text)
+  const ended = execute($, text, dir).then(async result => {
+    if (id !== latest) return false
+    isBusy = false
+    await update($, command, () => ({ command: text, cwd: dir, ...result }))
+    return true
+  })
+  return { ended }
+}
+
+// Runs the last command again, where it ran; nothing while it still runs.
+export async function rerunCommand($: Api): Promise<{ ended: Promise<boolean> } | undefined> {
   const shown = await read($, command)
-  if (shown) await runCommand($, shown.command, shown.cwd)
+  if (!shown || (shown.isRunning && isBusy)) return undefined
+  return startCommand($, shown.command, shown.cwd)
 }
 
 // The rows the view draws under its header, a gap between each part: the output; the errors

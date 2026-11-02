@@ -6,7 +6,7 @@ import type { EngineInterface, RenderElement, RenderInput, UiPressArgument } fro
 import type { ViewName } from '../../types'
 import type { Messages } from '../messages'
 import { messages } from '../messages'
-import { closePane, goBack, navigate, navState, switchView } from '../nav'
+import { closePane, goBack, navigate, navState, refit, switchView } from '../nav'
 import { mention, quoteAll, quoteSelection } from '../prompt'
 import { count } from '../pure/diff'
 import { commandOutput, rerunCommand } from '../views/command'
@@ -77,12 +77,18 @@ async function gitButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages):
   return buttons
 }
 
+// Runs the command again, and fits the pane to its output once it ended.
+async function rerun($: Api, say: Messages): Promise<void> {
+  const run = await rerunCommand($)
+  if (run && (await run.ended)) await refit($, say, 'command')
+}
+
 // The buttons of the command view.
 function commandButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
   const { Button } = $.ui.resolve(e)
   return [
     <Button key="quote-all" label={say.quoteAll} hotkey="t" onPress={() => quoteAll($, say)} />,
-    <Button key="rerun" label={say.rerun} hotkey="r" onPress={() => rerunCommand($)} />,
+    <Button key="rerun" label={say.rerun} hotkey="r" onPress={() => rerun($, say)} />,
     <Button key="copy" label={say.copy} hotkey="c" onPress={async press => copy($, say, await commandOutput($), press)} />,
   ]
 }

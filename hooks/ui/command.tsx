@@ -13,14 +13,15 @@ export async function drawCommand($: Api, e: RenderInput<'Pane'>, say: Messages,
   const output = clip(shown.stdout, DRAW_LIMIT)
   const errors = clip(shown.stderr, Math.max(DRAW_LIMIT - output.text.length, 0))
   const isCut = output.isCut || errors.isCut
-  const ended =
-    shown.stoppedAfter !== undefined ? (
-      <Text color="warning">{` · ${say.stoppedAfter(shown.stoppedAfter)}`}</Text>
-    ) : shown.exitCode === null ? (
-      <Text color="error">{` · ${say.failed}`}</Text>
-    ) : (
-      <Text {...(shown.exitCode === 0 ? { dimColor: true } : { color: 'error' })}>{` · ${say.exit(shown.exitCode)}`}</Text>
-    )
+  const ended = shown.isRunning ? (
+    <Text dimColor>{` · ${say.running}`}</Text>
+  ) : shown.stoppedAfter !== undefined ? (
+    <Text color="warning">{` · ${say.stoppedAfter(shown.stoppedAfter)}`}</Text>
+  ) : shown.exitCode === null ? (
+    <Text color="error">{` · ${say.failed}`}</Text>
+  ) : (
+    <Text {...(shown.exitCode === 0 ? { dimColor: true } : { color: 'error' })}>{` · ${say.exit(shown.exitCode)}`}</Text>
+  )
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -28,13 +29,18 @@ export async function drawCommand($: Api, e: RenderInput<'Pane'>, say: Messages,
         <Text wrap="truncate-middle">
           <Text weight="bold">{`$ ${shown.command}`}</Text>
           {ended}
+          {!shown.isRunning && shown.seconds !== undefined && <Text dimColor>{` · ${say.took(shown.seconds)}`}</Text>}
           {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}
         </Text>
       </Box>
       {output.text !== '' && <Code source={output.text} />}
       {errors.text.trim() !== '' && <Text dimColor>{say.stderr}</Text>}
       {errors.text.trim() !== '' && <Code source={errors.text} />}
-      {output.text === '' && errors.text.trim() === '' && <Text dimColor>{say.noOutput}</Text>}
+      {!shown.isRunning && output.text === '' && errors.text.trim() === '' && (
+        <Text key="no-output" dimColor>
+          {say.noOutput}
+        </Text>
+      )}
     </Box>
   )
 }

@@ -4,12 +4,12 @@ import { candidates, recentMessages, existing, resetFind, resolvePlace, where } 
 import type { Kind } from './find'
 import { configureLanguage, messages } from './messages'
 import type { Messages } from './messages'
-import { closePane, forgetPane, isPaneShown, navigate, navState, openView, PANE, reopen } from './nav'
+import { closePane, forgetPane, isPaneShown, navigate, navState, openView, PANE, refit, reopen } from './nav'
 import { rank, suggestion } from './pure/paths'
 import { parseTarget } from './pure/target'
 import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
-import { configureCommand, recentCommands, runCommand } from './views/command'
+import { configureCommand, recentCommands, resetCommand, startCommand } from './views/command'
 import type { Opened } from './nav'
 import { offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
 import { markGitStale, resetGit, tickGit } from './views/git'
@@ -59,8 +59,11 @@ async function peekCommand($: Api, args: string): Promise<{ text: string }> {
     return report(say, reopened ?? (await navigate($, say, { view: 'tree', root: at.cwd }, 'anew')))
   }
   if (target.kind === 'command') {
-    await runCommand($, target.command)
-    return report(say, await navigate($, say, { view: 'command' }, 'anew'))
+    // The pane opens while the command runs, and fits its output once it ended.
+    const { ended } = await startCommand($, target.command)
+    const opened = await navigate($, say, { view: 'command' }, 'anew')
+    if (await ended) await refit($, say, 'command')
+    return report(say, opened)
   }
   if (target.kind === 'git') return report(say, await navigate($, say, { view: 'git' }, 'anew'))
   const place = await resolvePlace($, at, target.path, 'place')
@@ -100,6 +103,7 @@ export const register: Register = (on, options: PluginOptions) => {
   // A load starts over: what an earlier load worked out may not hold for this one.
   configureLanguage(options.language)
   configureCommand(options.commandTimeoutSeconds)
+  resetCommand()
   resetFind()
   resetFile()
   resetTree()

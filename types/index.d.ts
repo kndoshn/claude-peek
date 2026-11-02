@@ -34,7 +34,8 @@ export type FileDoc = MdFile & {
 }
 
 // The last command the command view ran: where, what it printed, and how it ended (its exit
-// code, or the seconds after which it was stopped).
+// code, or the seconds after which it was stopped), with the whole seconds it took from one up;
+// while it runs again, what it printed the time before.
 export type CommandRun = {
   command: string
   cwd: string
@@ -42,6 +43,8 @@ export type CommandRun = {
   stderr: string
   exitCode: number | null
   stoppedAfter?: number
+  seconds?: number
+  isRunning?: boolean
 }
 
 // An entry of a folder as the tree lists it: a symbolic link as what it leads to (other when it
