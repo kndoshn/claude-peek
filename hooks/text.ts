@@ -138,8 +138,16 @@ export function ungutter(source: string, selected: string): { text: string; line
 
 export type Change = { kind: ' ' | '-' | '+'; line: string }
 
-// The line changes that turn `before` into `after`: the longest common run of lines kept, the
-// rest removed and added. Past a size the middle is compared as one block.
+const keep = (line: string): Change => ({ kind: ' ', line })
+const remove = (line: string): Change => ({ kind: '-', line })
+const add = (line: string): Change => ({ kind: '+', line })
+
+// Past this many removed and added lines the changed middle is shown replaced whole, which
+// bounds the diff's time and memory.
+const MAX_EDITS = 1000
+
+// The line changes that turn `before` into `after`, as few as there can be (Myers' O(ND)
+// algorithm over the lines between the common head and tail), removals first within each run.
 export function diff(before: string, after: string): Change[] {
   const a = lines(before)
   const b = lines(after)
@@ -149,94 +157,163 @@ export function diff(before: string, after: string): Change[] {
   while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail += 1
   const x = a.slice(head, a.length - tail)
   const y = b.slice(head, b.length - tail)
-  const keep = (line: string): Change => ({ kind: ' ', line })
-  const middle: Change[] = []
-  if (x.length * y.length > 1_000_000) {
-    middle.push(...x.map((line): Change => ({ kind: '-', line })), ...y.map((line): Change => ({ kind: '+', line })))
-  } else {
-    // lcs[i][j]: the longest common run of x[i..] and y[j..].
-    const width = y.length + 1
-    const lcs = new Uint32Array((x.length + 1) * width)
-    for (let i = x.length - 1; i >= 0; i -= 1) {
-      for (let j = y.length - 1; j >= 0; j -= 1) {
-        lcs[i * width + j] =
-          x[i] === y[j] ? (lcs[(i + 1) * width + j + 1] ?? 0) + 1 : Math.max(lcs[(i + 1) * width + j] ?? 0, lcs[i * width + j + 1] ?? 0)
-      }
+  const middle = shortestEdit(x, y) ?? [...x.map(remove), ...y.map(add)]
+  return [...a.slice(0, head).map(keep), ...removalsFirst(middle), ...a.slice(a.length - tail).map(keep)]
+}
+
+// The shortest edit from `x` to `y`, or undefined past MAX_EDITS.
+function shortestEdit(x: readonly string[], y: readonly string[]): Change[] | undefined {
+  const n = x.length
+  const m = y.length
+  if (n === 0 || m === 0) return [...x.map(remove), ...y.map(add)]
+  // Compare lines by number rather than by text.
+  const ids = new Map<string, number>()
+  const id = (line: string) => {
+    let found = ids.get(line)
+    if (found === undefined) {
+      found = ids.size
+      ids.set(line, found)
     }
-    let i = 0
-    let j = 0
-    while (i < x.length || j < y.length) {
-      if (i < x.length && j < y.length && x[i] === y[j]) {
-        middle.push(keep(x[i] ?? ''))
-        i += 1
-        j += 1
-      } else if (j < y.length && (i === x.length || (lcs[i * width + j + 1] ?? 0) >= (lcs[(i + 1) * width + j] ?? 0))) {
-        middle.push({ kind: '+', line: y[j] ?? '' })
-        j += 1
-      } else {
-        middle.push({ kind: '-', line: x[i] ?? '' })
-        i += 1
+    return found
+  }
+  const xs = Int32Array.from(x, id)
+  const ys = Int32Array.from(y, id)
+  const max = Math.min(n + m, MAX_EDITS)
+  const offset = max + 1
+  // v[offset + k]: the furthest x reached on diagonal k (x - y = k).
+  const v = new Int32Array(2 * max + 3)
+  // trace[d]: v over diagonals -d-1 .. d+1 before the d-th step, to walk the path back.
+  const trace: Int32Array[] = []
+  for (let d = 0; d <= max; d += 1) {
+    trace.push(v.slice(offset - d - 1, offset + d + 2))
+    for (let k = -d; k <= d; k += 2) {
+      const down = k === -d || (k !== d && (v[offset + k - 1] ?? 0) < (v[offset + k + 1] ?? 0))
+      let px = down ? (v[offset + k + 1] ?? 0) : (v[offset + k - 1] ?? 0) + 1
+      let py = px - k
+      while (px < n && py < m && xs[px] === ys[py]) {
+        px += 1
+        py += 1
       }
-    }
-    // Removals first within each run of changes, as a unified diff reads.
-    for (let k = 0; k < middle.length; ) {
-      let end = k
-      while (end < middle.length && middle[end]?.kind !== ' ') end += 1
-      const run = middle.slice(k, end)
-      middle.splice(k, run.length, ...run.filter(c => c.kind === '-'), ...run.filter(c => c.kind === '+'))
-      k = end + 1
+      v[offset + k] = px
+      if (px >= n && py >= m) return walkBack(x, y, trace)
     }
   }
-  return [...a.slice(0, head).map(keep), ...middle, ...a.slice(a.length - tail).map(keep)]
+  return undefined
+}
+
+function walkBack(x: readonly string[], y: readonly string[], trace: readonly Int32Array[]): Change[] {
+  const out: Change[] = []
+  let px = x.length
+  let py = y.length
+  for (let d = trace.length - 1; d >= 0; d -= 1) {
+    const at = (k: number) => trace[d]?.[k + d + 1] ?? 0
+    const k = px - py
+    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1
+    const prevX = at(prevK)
+    const prevY = prevX - prevK
+    while (px > prevX && py > prevY) {
+      out.push(keep(x[px - 1] ?? ''))
+      px -= 1
+      py -= 1
+    }
+    if (d > 0) out.push(px === prevX ? add(y[py - 1] ?? '') : remove(x[px - 1] ?? ''))
+    px = prevX
+    py = prevY
+  }
+  return out.reverse()
+}
+
+// Each run of changes with its removals before its additions, as a unified diff reads.
+function removalsFirst(changes: readonly Change[]): Change[] {
+  const out: Change[] = []
+  let run: Change[] = []
+  const flush = () => {
+    out.push(...run.filter(c => c.kind === '-'), ...run.filter(c => c.kind === '+'))
+    run = []
+  }
+  for (const change of changes) {
+    if (change.kind === ' ') {
+      flush()
+      out.push(change)
+    } else run.push(change)
+  }
+  flush()
+  return out
+}
+
+// How many lines the changes add and remove.
+export function count(changes: readonly Change[]): { added: number; removed: number } {
+  let added = 0
+  let removed = 0
+  for (const change of changes) {
+    if (change.kind === '+') added += 1
+    else if (change.kind === '-') removed += 1
+  }
+  return { added, removed }
 }
 
 // The changes as unified-diff hunks with `context` lines around each, or '' when none.
 export function hunks(changes: readonly Change[], context = 3): string {
-  const changed = changes.flatMap((c, i) => (c.kind === ' ' ? [] : [i]))
+  // oldAt[i], newAt[i]: the old and new lines before changes[i].
+  const oldAt = [0]
+  const newAt = [0]
+  changes.forEach((c, i) => {
+    oldAt.push((oldAt[i] ?? 0) + (c.kind === '+' ? 0 : 1))
+    newAt.push((newAt[i] ?? 0) + (c.kind === '-' ? 0 : 1))
+  })
   const groups: [number, number][] = []
-  for (const i of changed) {
+  changes.forEach((c, i) => {
+    if (c.kind === ' ') return
     const group = groups[groups.length - 1]
     if (group && i - group[1] <= context * 2 + 1) group[1] = i
     else groups.push([i, i])
-  }
+  })
   return groups
     .map(([from, to]) => {
       const start = Math.max(0, from - context)
       const end = Math.min(changes.length, to + context + 1)
-      const before = changes.slice(0, start)
-      const body = changes.slice(start, end)
-      const oldBefore = before.filter(c => c.kind !== '+').length
-      const newBefore = before.filter(c => c.kind !== '-').length
-      const oldCount = body.filter(c => c.kind !== '+').length
-      const newCount = body.filter(c => c.kind !== '-').length
-      const oldStart = oldCount === 0 ? oldBefore : oldBefore + 1
-      const newStart = newCount === 0 ? newBefore : newBefore + 1
-      return `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n${body.map(c => `${c.kind}${c.line}\n`).join('')}`
+      const oldCount = (oldAt[end] ?? 0) - (oldAt[start] ?? 0)
+      const newCount = (newAt[end] ?? 0) - (newAt[start] ?? 0)
+      const oldStart = (oldAt[start] ?? 0) + (oldCount === 0 ? 0 : 1)
+      const newStart = (newAt[start] ?? 0) + (newCount === 0 ? 0 : 1)
+      const body = changes.slice(start, end).map(c => `${c.kind}${c.line}\n`)
+      return `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n${body.join('')}`
     })
     .join('')
 }
 
-// Relative links to Markdown files turned into file: links the pane answers, resolved from
-// `dir`; links in code, images, anchors and other files left as written. Returns the text and
-// each new link's target path by its href.
+// The file: href and path of a relative link target that names a Markdown file, resolved from
+// `dir`, or undefined for any other target (a URL, an anchor, a root path, another file).
+function markdownTarget(target: string, dir: string): { href: string; path: string } | undefined {
+  const written = target.startsWith('<') && target.endsWith('>') ? target.slice(1, -1) : target
+  if (/^[a-z][a-z0-9+.-]*:/i.test(written) || written.startsWith('#') || written.startsWith('/')) return undefined
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(written.replace(/#.*$/, ''))
+  } catch {
+    return undefined
+  }
+  if (!/\.(md|markdown)$/i.test(decoded)) return undefined
+  const path = normalize(`${dir}/${decoded}`)
+  return { href: `file://${encodeURI(path)}`, path }
+}
+
+// Relative links to Markdown files (inline, in angle brackets, or by a reference definition)
+// turned into file: links the pane answers, resolved from `dir`; links in code, images and
+// other targets left as written. Returns the text and each new link's path by its href.
 export function linkify(markdown: string, dir: string): { text: string; links: Map<string, string> } {
   const links = new Map<string, string>()
-  const link = /(!?)\[([^\]]*)\]\(\s*([^)\s]+)(\s+"[^"]*")?\s*\)/g
+  const answer = (target: string) => {
+    const found = markdownTarget(target, dir)
+    if (found) links.set(found.href, found.path)
+    return found?.href
+  }
+  const inline = /(!?)\[([^\]]*)\]\(\s*(<[^>]*>|[^)\s]+)(\s+"[^"]*")?\s*\)/g
+  const definition = /^(\s{0,3}\[[^\]]+\]:\s*)(<[^>]*>|\S+)(.*)$/
   const rewrite = (segment: string) =>
-    segment.replace(link, (whole, bang: string, label: string, target: string, title: string | undefined) => {
-      if (bang || /^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('#') || target.startsWith('/')) return whole
-      const file = target.replace(/#.*$/, '')
-      let decoded: string
-      try {
-        decoded = decodeURIComponent(file)
-      } catch {
-        return whole
-      }
-      if (!/\.(md|markdown)$/i.test(decoded)) return whole
-      const path = normalize(`${dir}/${decoded}`)
-      const href = `file://${encodeURI(path)}`
-      links.set(href, path)
-      return `[${label}](${href}${title ?? ''})`
+    segment.replace(inline, (whole, bang: string, label: string, target: string, title: string | undefined) => {
+      const href = bang ? undefined : answer(target)
+      return href ? `[${label}](${href}${title ?? ''})` : whole
     })
   let fence: string | undefined
   const out = markdown.split('\n').map(line => {
@@ -248,6 +325,11 @@ export function linkify(markdown: string, dir: string): { text: string; links: M
     if (marker) {
       fence = marker
       return line
+    }
+    const defined = definition.exec(line)
+    if (defined) {
+      const href = answer(defined[2] ?? '')
+      return href ? `${defined[1]}${href}${defined[3]}` : line
     }
     // Leave inline code spans alone.
     return line

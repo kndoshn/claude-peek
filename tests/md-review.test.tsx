@@ -28,6 +28,7 @@ function toolResult(): Message {
 // a test; a file's modification time is 0 until `mtimes` says otherwise.
 function engine(on: On, files: Files, messages: Message[] = []) {
   const record = {
+    clock: mock.clock(on),
     opened: [] as string[],
     closed: [] as string[],
     filled: [] as { text: string; mode?: string }[],
@@ -211,7 +212,6 @@ async function submit($: Engine, text: string, command?: string) {
 }
 
 test('/md <path> opens the file relative to the working directory', async ($, on) => {
-  mock.clock(on)
   const files = { '/proj/docs/plan.md': '# Plan\n\nBody' }
   const r = engine(on, files)
   await start($)
@@ -356,30 +356,29 @@ test('quoting without a selection tells the person and fills nothing', async ($,
 })
 
 test('a change to the open file, by Claude or anything else, redraws the pane', async ($, on) => {
-  const clock = mock.clock(on)
   const files: Files = { '/proj/a.md': 'before' }
   const r = engine(on, files)
   await start($)
   await md($, 'a.md')
 
   files['/proj/a.md'] = 'after'
-  await clock.advance(1000)
+  await r.clock.advance(1000)
   // Same modification time: nothing to read again.
   expect(await shown($)).toBe('before')
 
   r.mtimes['/proj/a.md'] = 5
-  await clock.advance(1000)
+  await r.clock.advance(1000)
   expect(await shown($)).toBe('after')
 
   // A file that went away keeps what was shown, marked as gone until it comes back.
   delete files['/proj/a.md']
-  await clock.advance(1000)
+  await r.clock.advance(1000)
   expect(await shown($)).toBe('after')
   expect((await pane($)).header).toContain('deleted')
 
   files['/proj/a.md'] = 'back'
   r.mtimes['/proj/a.md'] = 9
-  await clock.advance(1000)
+  await r.clock.advance(1000)
   expect(await shown($)).toBe('back')
   expect((await pane($)).header).not.toContain('deleted')
 })
@@ -408,7 +407,6 @@ test('the source view shows the Markdown as written, numbered by line, and toggl
 })
 
 test('changes since the last prompt show as a diff, and the next prompt starts over', async ($, on) => {
-  const clock = mock.clock(on)
   const files: Files = { '/proj/a.md': 'one\ntwo\nthree\n' }
   const r = engine(on, files)
   await start($)
@@ -417,7 +415,7 @@ test('changes since the last prompt show as a diff, and the next prompt starts o
 
   files['/proj/a.md'] = 'one\n2\nthree\nfour\n'
   r.mtimes['/proj/a.md'] = 1
-  await clock.advance(1000)
+  await r.clock.advance(1000)
   expect(await button($, 'changes')).toBe('Changes +2 −1')
 
   await press($, 'changes')
@@ -436,7 +434,6 @@ test('changes since the last prompt show as a diff, and the next prompt starts o
 })
 
 test('the diff keeps far apart changes in hunks of their own', async ($, on) => {
-  const clock = mock.clock(on)
   const before = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`)
   const after = before.map(line => (line === 'line 2' ? 'LINE 2' : line === 'line 18' ? 'LINE 18' : line))
   const files: Files = { '/proj/a.md': before.join('\n') }
@@ -446,7 +443,7 @@ test('the diff keeps far apart changes in hunks of their own', async ($, on) => 
 
   files['/proj/a.md'] = after.join('\n')
   r.mtimes['/proj/a.md'] = 1
-  await clock.advance(1000)
+  await r.clock.advance(1000)
   await press($, 'changes')
   const hunks = String((await pane($)).code?.source).match(/^@@ .* @@$/gm)
   expect(hunks).toEqual(['@@ -1,5 +1,5 @@', '@@ -15,6 +15,6 @@'])
@@ -642,4 +639,44 @@ test('the language option set to en speaks English whatever the settings say', {
   r.env = { LANG: 'ja_JP.UTF-8' }
 
   expect((await md($, 'a.md')).text).toBe('Opened a.md')
+})
+
+test('opening the file that is open keeps its changes and its view', async ($, on) => {
+  const files: Files = { '/proj/a.md': 'one\n' }
+  const r = engine(on, files)
+  await start($)
+  await md($, 'a.md')
+  await press($, 'source')
+  files['/proj/a.md'] = 'one\ntwo\n'
+  r.mtimes['/proj/a.md'] = 1
+  await r.clock.advance(1000)
+
+  await md($, 'a.md')
+  expect(await button($, 'changes')).toBe('Changes +1 −0')
+  expect(await button($, 'source')).toBe('Rendered')
+})
+
+test('opening a file keeps the offer of another', async ($, on) => {
+  engine(on, { '/proj/a.md': 'a', '/proj/b.md': 'b' }, [user('go'), assistant('see b.md')])
+  await turnEnds($)
+
+  await md($, 'a.md')
+  expect(await button($, 'offer')).toBe('Open b.md')
+})
+
+test('completion lists the project files once for a few seconds, while /md lists them afresh', async ($, on) => {
+  const r = engine(on, { '/proj/docs/setup.md': 's' })
+  tracked(r, 'docs/setup.md')
+  const listed = () => r.ran.filter(argv => argv[0] === 'git').length
+
+  await autocomplete($, { text: '/md s', cursor: 5, token: 's', start: 4 })
+  await autocomplete($, { text: '/md se', cursor: 6, token: 'se', start: 4 })
+  expect(listed()).toBe(1)
+
+  await r.clock.advance(5000)
+  await autocomplete($, { text: '/md set', cursor: 7, token: 'set', start: 4 })
+  expect(listed()).toBe(2)
+
+  await md($, 'setup')
+  expect(listed()).toBe(3)
 })

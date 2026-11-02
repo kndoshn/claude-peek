@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register, SessionMessage } from 'claude-code'
 
-import type { Doc, MdFile } from '../types'
+import type { Doc, MdFile, View } from '../types'
 import { languageOf, MESSAGES } from './messages'
 import type { Lang, Messages } from './messages'
-import { basename, cite, clip, diff, dirname, frontMatter, hunks, lines, linkify, locate, quote, rank, ungutter } from './text'
+import { basename, cite, clip, count, diff, dirname, frontMatter, hunks, lines, linkify, locate, normalize, quote, rank, ungutter } from './text'
 import type { Change } from './text'
 
 // md-review: read a Markdown file rendered in a pane beside the chat and quote passages of it
@@ -20,11 +20,11 @@ import type { Change } from './text'
 //                reply named
 
 type Api = EngineInterface
+// Where relative and ~/ paths start.
+type Where = { cwd: string; home: string | undefined }
 
 const PANE = 'md-review'
-const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-4' })
-const view = atom({ plugin: 'md-review', key: 'view' } as const, 'rendered', { shape: 'view-1' })
-const back = atom({ plugin: 'md-review', key: 'back' } as const, [], { shape: 'back-1' })
+const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-5' })
 const offer = atom({ plugin: 'md-review', key: 'offer' } as const, null, { shape: 'offer-1' })
 
 const MARKDOWN = /\.(md|markdown)$/i
@@ -34,6 +34,8 @@ const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'Read'])
 // How far back /md without a path and the completion look.
 const RECENT_MESSAGES = 30
 const MAX_SUGGESTIONS = 10
+// How long completion reuses the project's file list, so typing does not list it per key.
+const LIST_TTL_MS = 5000
 // How often the open file is checked for changes on disk.
 const WATCH_MS = 1000
 // The most text the pane draws, under the 100000 characters a drawing takes.
@@ -41,21 +43,19 @@ const DRAW_LIMIT = 90_000
 // The most links in one drawing the pane answers.
 const MAX_LINKS = 256
 
-async function home($: Api): Promise<string | undefined> {
-  return $.env.get('HOME')
+async function where($: Api): Promise<Where> {
+  return { cwd: await $.session.cwd(), home: await $.env.get('HOME') }
 }
 
-async function absolute($: Api, path: string): Promise<string> {
-  if (path.startsWith('/')) return path
-  if (path.startsWith('~/')) return `${(await home($)) ?? '~'}${path.slice(1)}`
-  return `${await $.session.cwd()}/${path.replace(/^\.\//, '')}`
+function absolute(at: Where, path: string): string {
+  if (path.startsWith('/')) return normalize(path)
+  if (path.startsWith('~/')) return normalize(`${at.home ?? '~'}${path.slice(1)}`)
+  return normalize(`${at.cwd}/${path}`)
 }
 
-async function describe($: Api, path: string): Promise<MdFile> {
-  const cwd = await $.session.cwd()
-  const dir = await home($)
-  if (path.startsWith(`${cwd}/`)) return { path, label: path.slice(cwd.length + 1) }
-  if (dir && path.startsWith(`${dir}/`)) return { path, label: `~${path.slice(dir.length)}` }
+function describe(at: Where, path: string): MdFile {
+  if (path.startsWith(`${at.cwd}/`)) return { path, label: path.slice(at.cwd.length + 1) }
+  if (at.home && path.startsWith(`${at.home}/`)) return { path, label: `~${path.slice(at.home.length)}` }
   return { path, label: path }
 }
 
@@ -77,16 +77,18 @@ async function recentMessages($: Api): Promise<SessionMessage[]> {
 }
 
 // The existing .md files the replies among `messages` named, newest first, each once.
-async function existing($: Api, messages: readonly SessionMessage[]): Promise<string[]> {
-  const paths: string[] = []
-  for (const message of [...messages].reverse()) {
-    if (message.role !== 'assistant') continue
-    for (const candidate of named(message)) {
-      const path = await absolute($, candidate)
-      if (!paths.includes(path) && (await $.fs.exists(path))) paths.push(path)
-    }
-  }
-  return paths
+async function existing($: Api, at: Where, messages: readonly SessionMessage[]): Promise<string[]> {
+  const paths = [
+    ...new Set(
+      [...messages]
+        .reverse()
+        .filter(message => message.role === 'assistant')
+        .flatMap(named)
+        .map(path => absolute(at, path)),
+    ),
+  ]
+  const found = await Promise.all(paths.map(path => $.fs.exists(path).catch(() => false)))
+  return paths.filter((_, i) => found[i])
 }
 
 // The messages since the person's last prompt: a user message that carries no tool results.
@@ -98,34 +100,40 @@ function sinceLastPrompt(messages: readonly SessionMessage[]): readonly SessionM
   return messages
 }
 
+// The project's file list completion last took, reused for LIST_TTL_MS.
+let listed: { cwd: string; at: number; files: string[] } | undefined
+
 // The project's Markdown files relative to the working directory: git's list (untracked ones
-// too, ignored ones not), else fd's outside a repository, else none.
-async function projectFiles($: Api): Promise<string[]> {
+// too, ignored ones not), else fd's outside a repository, else none. Unless `fresh`, a list
+// taken in the last few seconds is reused.
+async function projectFiles($: Api, cwd: string, fresh: boolean): Promise<string[]> {
+  const now = await $.clock.now().catch(() => undefined)
+  if (!fresh && listed?.cwd === cwd && now !== undefined && now - listed.at < LIST_TTL_MS) return listed.files
   const run = (argv: string[]) => $.process.run(argv).catch(() => undefined)
   const git = await run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.md', '*.markdown'])
-  if (git?.exitCode === 0) return git.stdout.split('\0').filter(Boolean)
-  const fd = await run(['fd', '--type', 'f', '--extension', 'md', '--extension', 'markdown', '--hidden', '--exclude', '.git'])
-  if (fd?.exitCode === 0) return fd.stdout.split('\n').filter(Boolean)
-  return []
+  let files: string[] = []
+  if (git?.exitCode === 0) files = git.stdout.split('\0').filter(Boolean)
+  else {
+    const fd = await run(['fd', '--type', 'f', '--extension', 'md', '--extension', 'markdown', '--hidden', '--exclude', '.git'])
+    if (fd?.exitCode === 0) files = fd.stdout.split('\n').filter(Boolean)
+  }
+  if (now !== undefined) listed = { cwd, at: now, files }
+  return files
 }
 
 // The labels of the .md files to choose from: those the conversation named, then the project's.
-async function candidates($: Api): Promise<string[]> {
-  const labels: string[] = []
-  for (const path of await existing($, await recentMessages($))) {
-    labels.push((await describe($, path)).label)
-  }
-  labels.push(...(await projectFiles($)))
-  return [...new Set(labels)]
+async function candidates($: Api, at: Where, fresh: boolean): Promise<string[]> {
+  const named = (await existing($, at, await recentMessages($))).map(path => describe(at, path).label)
+  return [...new Set([...named, ...(await projectFiles($, at.cwd, fresh))])]
 }
 
 // The file /md <arg> means: the path itself when it exists, else the best match of the
 // candidates for the words given.
-async function resolveArg($: Api, arg: string): Promise<string | undefined> {
-  const path = await absolute($, arg)
+async function resolveArg($: Api, at: Where, arg: string): Promise<string | undefined> {
+  const path = absolute(at, arg)
   if (await $.fs.exists(path)) return path
-  const [best] = rank(arg, await candidates($))
-  return best === undefined ? undefined : absolute($, best)
+  const [best] = rank(arg, await candidates($, at, true))
+  return best === undefined ? undefined : absolute(at, best)
 }
 
 // The file's modification time, or undefined when it is not there.
@@ -148,77 +156,136 @@ async function load($: Api, path: string): Promise<{ text: string; mtimeMs: numb
   }
 }
 
-// Opens `path` in the pane, rendered, the text as read now the base its changes are counted
-// from: the file's label, or what to say about why not.
-async function open($: Api, say: Messages, path: string): Promise<{ label: string } | { error: string }> {
+type Opened = { label: string } | { error: string }
+
+// Shows `path` in the pane, its Back list made by `back` from what was shown. The same file
+// shown again keeps its base and view; another starts rendered, its text as read the base.
+async function show($: Api, say: Messages, path: string, back: (shown: Doc | null) => string[]): Promise<Opened> {
   if (!MARKDOWN.test(path)) return { error: say.notMarkdown(path) }
   const loaded = await load($, path)
   if (!loaded) return { error: say.unreadable(path) }
-  const file = await describe($, path)
-  await update($, doc, () => ({ ...file, ...loaded, base: loaded.text, isDeleted: false }))
-  await update($, view, () => 'rendered' as const)
-  await update($, offer, () => null)
+  const file = describe(await where($), path)
+  await update($, doc, shown => {
+    const same = shown?.path === path ? shown : undefined
+    return {
+      ...file,
+      ...loaded,
+      base: same?.base ?? loaded.text,
+      isDeleted: false,
+      view: same?.view ?? ('rendered' as const),
+      back: back(shown),
+    }
+  })
+  await update($, offer, offered => (offered?.path === path ? null : offered))
   await $.ui.open({ id: PANE, title: basename(path) })
   return { label: file.label }
 }
 
-// Opens a file the person chose afresh (not by a link), so Back starts over.
-async function openAnew($: Api, say: Messages, path: string): Promise<{ label: string } | { error: string }> {
-  const opened = await open($, say, path)
-  if (!('error' in opened)) await update($, back, () => [])
-  return opened
+// Opens a file the person chose (not by a link), so Back starts over.
+async function openAnew($: Api, say: Messages, path: string): Promise<Opened> {
+  return show($, say, path, () => [])
 }
 
-// Follows a link from the open file to `path`, so Back returns to the open file.
+// Follows a link from the shown file to `path`, so Back returns to the shown file.
 async function follow($: Api, say: Messages, path: string): Promise<void> {
-  const from = await read($, doc)
-  const opened = await open($, say, path)
-  if ('error' in opened) {
-    $.ui.toast(opened.error)
-    return
-  }
-  if (from) await update($, back, history => [...history, from.path])
+  const opened = await show($, say, path, shown => (shown ? [...shown.back, shown.path] : []))
+  if ('error' in opened) $.ui.toast(opened.error)
 }
 
 // Returns to the file the last link was followed from; one that cannot be read is dropped.
 async function goBack($: Api, say: Messages): Promise<void> {
-  const history = await read($, back)
-  const previous = history[history.length - 1]
-  if (previous === undefined) return
-  const opened = await open($, say, previous)
-  if ('error' in opened) $.ui.toast(opened.error)
-  await update($, back, () => history.slice(0, -1))
+  const shown = await read($, doc)
+  const previous = shown?.back[shown.back.length - 1]
+  if (!shown || previous === undefined) return
+  const rest = shown.back.slice(0, -1)
+  const opened = await show($, say, previous, () => rest)
+  if ('error' in opened) {
+    $.ui.toast(opened.error)
+    await update($, doc, current => (current ? { ...current, back: rest } : current))
+  }
+}
+
+async function setView($: Api, to: View): Promise<void> {
+  await update($, doc, shown => (shown ? { ...shown, view: shown.view === to ? 'rendered' : to } : shown))
 }
 
 async function close($: Api): Promise<void> {
   await update($, doc, () => null)
-  await update($, back, () => [])
   await $.ui.close({ id: PANE })
 }
 
-// Reads the open file again when it changed on disk since it was read. A file gone stays shown,
-// marked as gone until it is back.
-async function refresh($: Api): Promise<void> {
-  const shown = await read($, doc)
-  if (!shown) return
-  const now = await mtime($, shown.path)
-  const same = (current: Doc | null) => current?.path === shown.path
-  if (now === undefined) {
-    if (!shown.isDeleted) await update($, doc, current => (same(current) && current ? { ...current, isDeleted: true } : current))
-    return
-  }
-  if (now === shown.mtimeMs && !shown.isDeleted) return
-  const loaded = await load($, shown.path)
-  if (loaded) await update($, doc, current => (same(current) && current ? { ...current, ...loaded, isDeleted: false } : current))
+// The file as it stands becomes the base the changes are counted from.
+async function rebase($: Api): Promise<void> {
+  await update($, doc, shown =>
+    shown && (shown.base !== shown.text || shown.view === 'changes')
+      ? { ...shown, base: shown.text, view: shown.view === 'changes' ? 'rendered' : shown.view }
+      : shown,
+  )
 }
 
-// The changes from the file's base to its text, worked out once for each pair.
+// Whether a refresh is under way, so a slow read is not started again on the next tick.
+let refreshing = false
+
+// Reads the shown file again when it changed on disk since it was read. A file gone stays shown,
+// marked as gone until it is back.
+async function refresh($: Api): Promise<void> {
+  if (refreshing) return
+  refreshing = true
+  try {
+    const shown = await read($, doc)
+    if (!shown) return
+    const now = await mtime($, shown.path)
+    if (now === shown.mtimeMs && !shown.isDeleted) return
+    const loaded = now === undefined ? undefined : await load($, shown.path)
+    if (!loaded && shown.isDeleted) return
+    await update($, doc, current => {
+      if (current?.path !== shown.path) return current
+      return loaded ? { ...current, ...loaded, isDeleted: false } : { ...current, isDeleted: true }
+    })
+  } finally {
+    refreshing = false
+  }
+}
+
+// The changes from the shown file's base to its text, worked out once for each pair.
 let compared: { base: string; text: string; changes: Change[] } | undefined
 function changesOf(shown: Doc): Change[] {
   if (compared?.base !== shown.base || compared.text !== shown.text) {
     compared = { base: shown.base, text: shown.text, changes: diff(shown.base, shown.text) }
   }
   return compared.changes
+}
+
+async function quoteSelection($: Api, say: Messages): Promise<void> {
+  const shown = await read($, doc)
+  const selected = await $.ui.selection()
+  if (!shown || !selected || selected.text.trim() === '') {
+    $.ui.toast(say.selectFirst)
+    return
+  }
+  const draft = (await $.prompt.read()).text
+  const gap = draft === '' || draft.endsWith('\n\n') ? '' : draft.endsWith('\n') ? '\n' : '\n\n'
+  // A selection from the source view may carry its line numbers, which tell the lines.
+  const numbered = shown.view === 'source' ? ungutter(shown.text, selected.text) : undefined
+  const text = numbered?.text ?? selected.text
+  const head = cite(shown.label, numbered?.lines ?? locate(shown.text, selected.text))
+  await $.prompt.fill({ text: `${gap}${head}\n${quote(text)}\n\n`, mode: 'append' })
+}
+
+// Offers the .md the reply since the last prompt named last, unless it is the one shown.
+async function offerNamed($: Api): Promise<void> {
+  const at = await where($)
+  const [path] = await existing($, at, sinceLastPrompt(await recentMessages($)))
+  const shown = await read($, doc)
+  const file = path && path !== shown?.path ? describe(at, path) : null
+  await update($, offer, () => file)
+}
+
+async function openOffered($: Api, say: Messages): Promise<void> {
+  const offered = await read($, offer)
+  if (!offered) return
+  const opened = await openAnew($, say, offered.path)
+  if ('error' in opened) $.ui.toast(opened.error)
 }
 
 // The language option as set: auto, en or ja.
@@ -245,8 +312,11 @@ async function messages($: Api): Promise<Messages> {
 }
 
 export const register: Register = (on, options: PluginOptions) => {
+  // A load starts over: what the last load worked out may not hold for this one.
   configured = String(options.language ?? 'auto')
   detected = undefined
+  listed = undefined
+  refreshing = false
 
   on('session.start', async ($, e, next) => {
     const say = await messages($)
@@ -260,13 +330,14 @@ export const register: Register = (on, options: PluginOptions) => {
 
   on('command.run', { command: 'md' }, async ($, e) => {
     const say = await messages($)
+    const at = await where($)
     const arg = e.args.trim()
     let path: string | undefined
     if (arg) {
-      path = await resolveArg($, arg)
+      path = await resolveArg($, at, arg)
       if (!path) return { text: say.notFound(arg) }
     } else {
-      ;[path] = await existing($, await recentMessages($))
+      ;[path] = await existing($, at, await recentMessages($))
       if (!path) return { text: say.noneRecent }
     }
     const opened = await openAnew($, say, path)
@@ -279,7 +350,7 @@ export const register: Register = (on, options: PluginOptions) => {
     const base = await next(e)
     if (!/^\/md\s/.test(e.text) || e.start < 4) return base
     try {
-      const mine = rank(e.token, await candidates($))
+      const mine = rank(e.token, await candidates($, await where($), false))
         .slice(0, MAX_SUGGESTIONS)
         .map(label => ({ text: label, label: basename(label), description: label }))
 
@@ -289,42 +360,23 @@ export const register: Register = (on, options: PluginOptions) => {
     }
   })
 
-  // The person's message (not a slash command): the file as it stands becomes the base the
-  // changes are counted from.
+  // The person's message (not a slash command) starts the count of changes again.
   on('prompt.submit', async ($, e, next) => {
-    if (!e.command && !e.isMeta) {
-      try {
-        await update($, doc, current => (current ? { ...current, base: current.text } : current))
-        if ((await read($, view)) === 'changes') await update($, view, () => 'rendered' as const)
-      } catch {
-        // The changes keep their base.
-      }
-    }
+    if (!e.command && !e.isMeta) await rebase($).catch(() => undefined)
 
     return next(e)
   }).catch((_, e, next) => next(e))
 
-  // Offer the .md the reply just named, unless it is the one open.
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    try {
-      const [path] = await existing($, sinceLastPrompt(await recentMessages($)))
-      const shown = await read($, doc)
-      const file = path && path !== shown?.path ? await describe($, path) : null
-      await update($, offer, () => file)
-    } catch {
-      // No offer this time.
-    }
+    await offerNamed($).catch(() => undefined)
 
     return result
   })
 
   // The person closed the pane (Esc, its close mark).
   on('ui.close', async ($, e, next) => {
-    if (e.id === PANE) {
-      await update($, doc, () => null).catch(() => undefined)
-      await update($, back, () => []).catch(() => undefined)
-    }
+    if (e.id === PANE) await update($, doc, () => null).catch(() => undefined)
 
     return next(e)
   }).catch((_, e, next) => next(e))
@@ -334,17 +386,16 @@ export const register: Register = (on, options: PluginOptions) => {
     const say = await messages($)
     const shown = await read($, doc)
     if (!shown) return <Text dimColor>{say.emptyPane}</Text>
-    const mode = await read($, view)
 
     const notes = [say.lineCount(lines(shown.text).length)]
     let isCut = false
     let body
-    if (mode === 'source') {
+    if (shown.view === 'source') {
       notes.push(say.sourceView)
       const drawn = clip(shown.text, DRAW_LIMIT)
       isCut = drawn.isCut
       body = <Code source={drawn.text} language="markdown" startLine={1} />
-    } else if (mode === 'changes') {
+    } else if (shown.view === 'changes') {
       notes.push(say.changesView)
       const drawn = clip(hunks(changesOf(shown)), DRAW_LIMIT, '\n@@')
       isCut = drawn.isCut
@@ -386,52 +437,31 @@ export const register: Register = (on, options: PluginOptions) => {
     if (e.props.hasSurvey || (!shown && !offered)) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const say = await messages($)
-    const mode = await read($, view)
-    const history = await read($, back)
-    const changes = shown ? changesOf(shown) : []
-    const added = changes.filter(change => change.kind === '+').length
-    const removed = changes.filter(change => change.kind === '-').length
-
-    const quoteSelection = async () => {
-      const current = await read($, doc)
-      const selected = await $.ui.selection()
-      if (!current || !selected || selected.text.trim() === '') {
-        $.ui.toast(say.selectFirst)
-        return
-      }
-      const draft = (await $.prompt.read()).text
-      const gap = draft === '' || draft.endsWith('\n\n') ? '' : draft.endsWith('\n') ? '\n' : '\n\n'
-      // A selection from the source view may carry its line numbers, which tell the lines.
-      const numbered = (await read($, view)) === 'source' ? ungutter(current.text, selected.text) : undefined
-      const text = numbered?.text ?? selected.text
-      const head = cite(current.label, numbered?.lines ?? locate(current.text, selected.text))
-      await $.prompt.fill({ text: `${gap}${head}\n${quote(text)}\n\n`, mode: 'append' })
-    }
-    const toggle = (to: 'source' | 'changes') => update($, view, current => (current === to ? 'rendered' : to))
-    const openOffered = async () => {
-      if (!offered) return
-      const opened = await openAnew($, say, offered.path)
-      if ('error' in opened) $.ui.toast(opened.error)
-    }
+    const { added, removed } = shown ? count(changesOf(shown)) : { added: 0, removed: 0 }
 
     return (
       <Box gap={1} flexWrap="wrap">
         {shown && <Text dimColor>{shown.label}</Text>}
-        {shown && <Button key="quote" label={say.quote} hotkey="q" variant="primary" onPress={quoteSelection} />}
+        {shown && <Button key="quote" label={say.quote} hotkey="q" variant="primary" onPress={() => quoteSelection($, say)} />}
         {shown && (
-          <Button key="source" label={mode === 'source' ? say.rendered : say.source} hotkey="s" onPress={() => toggle('source')} />
-        )}
-        {shown && (mode === 'changes' || added + removed > 0) && (
           <Button
-            key="changes"
-            label={mode === 'changes' ? say.hideChanges : say.changes(added, removed)}
-            hotkey="d"
-            onPress={() => toggle('changes')}
+            key="source"
+            label={shown.view === 'source' ? say.rendered : say.source}
+            hotkey="s"
+            onPress={() => setView($, 'source')}
           />
         )}
-        {shown && history.length > 0 && <Button key="back" label={say.back} hotkey="b" onPress={() => goBack($, say)} />}
+        {shown && (shown.view === 'changes' || added + removed > 0) && (
+          <Button
+            key="changes"
+            label={shown.view === 'changes' ? say.hideChanges : say.changes(added, removed)}
+            hotkey="d"
+            onPress={() => setView($, 'changes')}
+          />
+        )}
+        {shown && shown.back.length > 0 && <Button key="back" label={say.back} hotkey="b" onPress={() => goBack($, say)} />}
         {shown && <Button key="close" label={say.close} dimColor onPress={() => close($)} />}
-        {offered && <Button key="offer" label={say.open(offered.label)} hotkey="o" onPress={openOffered} />}
+        {offered && <Button key="offer" label={say.open(offered.label)} hotkey="o" onPress={() => openOffered($, say)} />}
         {offered && <Button key="dismiss" label={say.dismiss} dimColor onPress={() => update($, offer, () => null)} />}
       </Box>
     )
