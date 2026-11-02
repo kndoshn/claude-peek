@@ -1,7 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
-import { diff, hunks, linkify } from '../hooks/text'
-import type { Change } from '../hooks/text'
+import { diff, hunks } from '../hooks/diff'
+import { clip, frontMatter, linkify } from '../hooks/markdown'
+import { absolute, describe, dirname, named, normalize, rank } from '../hooks/paths'
+import { cite, locate, quote, ungutter } from '../hooks/quote'
+import type { Change } from '../hooks/diff'
 
 // A small deterministic generator, so a failure repeats.
 function random(seed: number): () => number {
@@ -74,4 +77,83 @@ test('links in angle brackets and reference definitions to Markdown files are an
     ['file:///d/my%20notes.md', '/d/my notes.md'],
     ['file:///d/sub/b.md', '/d/sub/b.md'],
   ])
+})
+
+const at = { cwd: '/proj', home: '/home/me' }
+
+test('paths resolve from the working directory or the home and fold dots', () => {
+  expect(absolute(at, './docs/../a.md')).toBe('/proj/a.md')
+  expect(absolute(at, '~/n/b.md')).toBe('/home/me/n/b.md')
+  expect(absolute(at, '/x//y/./z.md')).toBe('/x/y/z.md')
+  expect(normalize('/a/../../b')).toBe('/b')
+  expect(dirname('/a.md')).toBe('/')
+  expect(dirname('/d/a.md')).toBe('/d')
+})
+
+test('a path is labelled from the working directory, else from the home, else in full', () => {
+  expect(describe(at, '/proj/docs/a.md').label).toBe('docs/a.md')
+  expect(describe(at, '/home/me/n/b.md').label).toBe('~/n/b.md')
+  expect(describe(at, '/etc/c.md').label).toBe('/etc/c.md')
+  // A sibling whose name starts with the working directory's is not inside it.
+  expect(describe(at, '/project/d.md').label).toBe('/project/d.md')
+})
+
+test('a reply names .md files by its file tools and in its text, the last named first', () => {
+  const message = {
+    role: 'assistant' as const,
+    text: 'See `docs/a.md`, https://example.com/x.mdx and (b.markdown).',
+    toolUses: [
+      { tool_use_id: '1', tool: 'Write', input: { file_path: '/p/w.md' } },
+      { tool_use_id: '2', tool: 'Bash', input: { command: 'cat z.md' } },
+    ],
+  }
+  expect(named(message)).toEqual(['b.markdown', 'docs/a.md', '/p/w.md'])
+})
+
+test('ranking puts a name match before a path match before loose ones, and drops the rest', () => {
+  const labels = ['docs/setup.md', 'set/up/readme.md', 'notes/s-e-t-u-p.md', 'other.md']
+  expect(rank('setup', labels)).toEqual(['docs/setup.md', 'notes/s-e-t-u-p.md', 'set/up/readme.md'])
+  expect(rank('SETUP', ['docs/setup.md'])).toEqual(['docs/setup.md'])
+})
+
+test('a quote marks every line and leaves blank lines bare', () => {
+  expect(quote('a\n\n  b\n\n')).toBe('> a\n>\n>   b')
+  expect(cite('a.md', [3, 3])).toBe('a.md:3')
+  expect(cite('a.md', [3, 5])).toBe('a.md:3-5')
+  expect(cite('a.md', undefined)).toBe('a.md')
+})
+
+test('a rendered selection is found in its source through the Markdown around it', () => {
+  const source = '# Title\n\n| a | b |\n|---|---|\n| one | **two** |\n\n> quoted [link](x.md)\n'
+  expect(locate(source, '│ one │ two │')).toEqual([5, 5])
+  expect(locate(source, 'Title')).toEqual([1, 1])
+  expect(locate(source, 'quoted link')).toEqual([7, 7])
+  expect(locate(source, '   ')).toBeUndefined()
+})
+
+test('numbers are taken off a selection only when they run on and match the source', () => {
+  const source = 'a\nlong line here\nc\n'
+  expect(ungutter(source, '2 │ long line\n    here\n3 │ c')).toEqual({ text: 'long line\nhere\nc', lines: [2, 3] })
+  expect(ungutter(source, '2 long line here\n4 c')).toBeUndefined()
+  expect(ungutter(source, '3 things')).toBeUndefined()
+  expect(ungutter(source, 'here\n3 c')).toBeUndefined()
+})
+
+test('front matter becomes a YAML block only at the very top', () => {
+  expect(frontMatter('---\na: 1\n---\nbody')).toBe('```yaml\na: 1\n```\nbody')
+  expect(frontMatter('text\n---\na: 1\n---\n')).toBe('text\n---\na: 1\n---\n')
+})
+
+test('a cut ends after a whole line, or for a diff after a whole hunk', () => {
+  expect(clip('aaa\nbbb\nccc\n', 9)).toEqual({ text: 'aaa\nbbb\n', isCut: true })
+  expect(clip('short', 9)).toEqual({ text: 'short', isCut: false })
+  const diffText = '@@ -1,1 +1,1 @@\n-a\n+b\n@@ -9,1 +9,1 @@\n-c\n+d\n'
+  expect(clip(diffText, 30, '\n@@')).toEqual({ text: '@@ -1,1 +1,1 @@\n-a\n+b\n', isCut: true })
+})
+
+test('links inside code, images and other targets stay as written', () => {
+  const source = '```\n[a](a.md)\n```\n`[b](b.md)` ![c](c.md) [d](#d) [e](/e.md) [f](f.txt) [g](g.md)'
+  const { text, links } = linkify(source, '/r')
+  expect(text).toBe('```\n[a](a.md)\n```\n`[b](b.md)` ![c](c.md) [d](#d) [e](/e.md) [f](f.txt) [g](file:///r/g.md)')
+  expect([...links.keys()]).toEqual(['file:///r/g.md'])
 })

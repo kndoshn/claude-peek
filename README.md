@@ -92,8 +92,16 @@ claude plugin test .             # run tests/*.test.tsx against the engine
 claude plugin validate .         # check the manifest and the hooks module
 ```
 
-The hooks module is `hooks/register.tsx`; pure helpers are in `hooks/text.ts` and the messages in
-`hooks/messages.ts`.
+| File | What it holds |
+| --- | --- |
+| `hooks/register.tsx` | the hooks module: wires the events to the rest |
+| `hooks/doc.ts` | the shown file and the offer: their state and each step that changes them |
+| `hooks/files.ts` | finding Markdown files and reading them |
+| `hooks/ui.tsx` | the pane and the band |
+| `hooks/messages.ts` | the messages in English and Japanese, and which language to use |
+| `hooks/paths.ts`, `quote.ts`, `markdown.ts`, `diff.ts` | pure functions: paths, quoting, preparing Markdown, line diffs |
+| `tests/md-review.test.tsx` | the mod against the engine |
+| `tests/units.test.ts` | the pure functions |
 
 ## License
 

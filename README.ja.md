@@ -87,8 +87,16 @@ claude plugin test .             # tests/*.test.tsx を実行する
 claude plugin validate .         # マニフェストと hooks module を検査する
 ```
 
-hooks module は `hooks/register.tsx` です。純粋な関数は `hooks/text.ts`、メッセージは
-`hooks/messages.ts` にあります。
+| ファイル | 中身 |
+| --- | --- |
+| `hooks/register.tsx` | hooks module。イベントとほかのファイルをつなぐ |
+| `hooks/doc.ts` | 表示中のファイルと提案中のファイル。その状態と、状態を変える操作 |
+| `hooks/files.ts` | Markdown ファイルを探して読む |
+| `hooks/ui.tsx` | パネルと入力欄の上の帯 |
+| `hooks/messages.ts` | 英語と日本語のメッセージと、どちらを使うか |
+| `hooks/paths.ts`・`quote.ts`・`markdown.ts`・`diff.ts` | 純粋な関数（パス、引用、Markdown の下ごしらえ、行の差分） |
+| `tests/md-review.test.tsx` | エンジンを相手にした mod のテスト |
+| `tests/units.test.ts` | 純粋な関数のテスト |
 
 ## ライセンス
 

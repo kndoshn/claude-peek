@@ -1,4 +1,6 @@
-// What md-review says, in each language it speaks.
+// What md-review says, in each language it speaks, and which language that is.
+
+import type { EngineInterface } from 'claude-code'
 
 export type Lang = 'en' | 'ja'
 
@@ -91,4 +93,33 @@ export function languageOf(value: string | undefined): Lang | undefined {
   if (/^(ja|japanese)(?![a-z])|^日本語/i.test(v)) return 'ja'
   if (/^(en|english)(?![a-z])/i.test(v)) return 'en'
   return undefined
+}
+
+// The language option as set (auto, en or ja), and the language auto came to.
+let configured = 'auto'
+let detected: Lang | undefined
+
+// Takes the language option of this load of the module.
+export function configureLanguage(option: unknown): void {
+  configured = String(option ?? 'auto')
+  detected = undefined
+}
+
+// The language set in the options; with auto, Claude Code's language setting, then the locale.
+async function language($: EngineInterface): Promise<Lang> {
+  const chosen = languageOf(configured)
+  if (chosen) return chosen
+  if (detected) return detected
+  const rows = await $.config.list().catch(() => [])
+  const setting = rows.find(row => row.key === 'language')?.value
+  const locale =
+    (await $.env.get('LC_ALL').catch(() => undefined)) ||
+    (await $.env.get('LC_MESSAGES').catch(() => undefined)) ||
+    (await $.env.get('LANG').catch(() => undefined))
+  detected = languageOf(typeof setting === 'string' ? setting : undefined) ?? languageOf(locale) ?? 'en'
+  return detected
+}
+
+export async function messages($: EngineInterface): Promise<Messages> {
+  return MESSAGES[await language($)]
 }
