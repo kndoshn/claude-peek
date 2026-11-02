@@ -447,6 +447,23 @@ test('a relative link to a Markdown file opens it in the pane, and Back returns'
   expect(await button($, 'back')).toBeUndefined()
 })
 
+test('a relative link to another file opens it at the lines of its anchor, and one to a folder opens the tree', async ($, on) => {
+  const files = {
+    '/proj/docs/index.md': 'See [the parser](../src/a.ts#L2-L3) in [src](../src/).',
+    '/proj/src/a.ts': 'one\ntwo\nthree\nfour',
+  }
+  const r = engine(on, files)
+  await md($, 'docs/index.md')
+  expect((await pane($)).markdown?.pressableLinks).toEqual(['file:///proj/src/a.ts#L2-L3', 'file:///proj/src'])
+
+  await pressPane($, 'doc', 'file:///proj/src/a.ts#L2-L3')
+  expect((await pane($)).header).toBe('src/a.ts · 4 lines · lines 2-3')
+  await press($, 'back')
+  await pressPane($, 'doc', 'file:///proj/src')
+  expect((await pane($)).header).toBe('/proj/src')
+  expect(r.toasts).toEqual([])
+})
+
 test('a link to a file that does not exist says so and stays', async ($, on) => {
   const r = engine(on, { '/proj/a.md': '[gone](gone%20file.md)' })
   await md($, 'a.md')

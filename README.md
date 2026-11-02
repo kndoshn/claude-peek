@@ -92,8 +92,10 @@ names a `.md` file, the row above the prompt offers **Open docs/plan.md**; **×*
 - **Changes +3 −1** shows what changed since your last message, as a diff. It appears once the
   file changed, and your next message starts the count again. Past about 1000 changed lines, the
   changed part shows as replaced whole.
-- A relative link to another Markdown file (`[setup](../setup.md)`, `[setup][ref]`,
-  `[a](<my notes.md>)`) opens that file in the pane. **← Back** returns.
+- A relative link to a file or folder (`[setup](../setup.md)`, `[setup][ref]`, `[a](<my notes.md>)`,
+  `[parser](../src/a.ts#L10-L20)`, `[src](../src/)`) opens it in the pane: a file in the file view,
+  at the lines of a GitHub anchor (`#L10`, `#L10-L20`) if it has one, a folder in the tree.
+  **← Back** returns.
 - Front matter shows as a YAML block, also after a byte order mark or with CRLF line endings.
 - A control character shows as its picture (`␛` for an escape, `␌` for a page break), so a log with
   colours still opens. The same goes for names and for what git prints.

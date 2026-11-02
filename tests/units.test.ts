@@ -74,12 +74,12 @@ test('a diff past the edit limit still turns one text into the other', () => {
   expect(side(changes, '-')).toEqual(split(after))
 })
 
-test('links in angle brackets and reference definitions to Markdown files are answered', () => {
+test('links in angle brackets and reference definitions are answered', () => {
   const { text: out, links } = linkify('[a](<my notes.md>)\n\nSee [b][ref].\n\n[ref]: ./sub/b.md "B"\n[web]: https://example.com', '/d')
   expect(out).toBe('[a](file:///d/my%20notes.md)\n\nSee [b][ref].\n\n[ref]: file:///d/sub/b.md "B"\n[web]: https://example.com')
   expect([...links]).toEqual([
-    ['file:///d/my%20notes.md', '/d/my notes.md'],
-    ['file:///d/sub/b.md', '/d/sub/b.md'],
+    ['file:///d/my%20notes.md', { path: '/d/my notes.md' }],
+    ['file:///d/sub/b.md', { path: '/d/sub/b.md' }],
   ])
 })
 
@@ -171,10 +171,22 @@ test('a cut ends after a whole line, or for a diff after a whole hunk', () => {
   expect(clip(diffText, 30, '\n@@')).toEqual({ text: '@@ -1,1 +1,1 @@\n-a\n+b\n', isCut: true })
 })
 
-test('links inside code, images and other targets stay as written', () => {
-  const source = '```\n[a](a.md)\n```\n`[b](b.md)` ![c](c.md) [d](#d) [e](/e.md) [f](f.txt) [g](g.md)'
+test('a relative link to any file or folder is answered, at the lines of a GitHub anchor', () => {
+  const { text, links } = linkify('[a](src/a.ts#L3-L5) [b](b.txt#L7) [c](../c/) [d](d.md?plain=1#L2C4-L9C1) [e](e.md#usage)', '/r/x')
+  expect(text).toBe('[a](file:///r/x/src/a.ts#L3-L5) [b](file:///r/x/b.txt#L7) [c](file:///r/c) [d](file:///r/x/d.md#L2-L9) [e](file:///r/x/e.md)')
+  expect([...links.values()]).toEqual([
+    { path: '/r/x/src/a.ts', lines: [3, 5] },
+    { path: '/r/x/b.txt', lines: [7, 7] },
+    { path: '/r/c' },
+    { path: '/r/x/d.md', lines: [2, 9] },
+    { path: '/r/x/e.md' },
+  ])
+})
+
+test('links inside code, images, anchors, URLs and root paths stay as written', () => {
+  const source = '```\n[a](a.md)\n```\n`[b](b.md)` ![c](c.md) [d](#d) [e](/e.md) [f](mailto:x) [g](g.md)'
   const { text, links } = linkify(source, '/r')
-  expect(text).toBe('```\n[a](a.md)\n```\n`[b](b.md)` ![c](c.md) [d](#d) [e](/e.md) [f](f.txt) [g](file:///r/g.md)')
+  expect(text).toBe('```\n[a](a.md)\n```\n`[b](b.md)` ![c](c.md) [d](#d) [e](/e.md) [f](mailto:x) [g](file:///r/g.md)')
   expect([...links.keys()]).toEqual(['file:///r/g.md'])
 })
 

@@ -6,30 +6,39 @@ import { normalize } from './paths'
 // The most text the pane draws, under the 100000 characters a drawing takes.
 export const DRAW_LIMIT = 90_000
 
-// The file: href and path of a relative link target that names a Markdown file, resolved from
-// `dir`, or undefined for any other target (a URL, an anchor, a root path, another file).
-function markdownTarget(target: string, dir: string): { href: string; path: string } | undefined {
+// Where a link leads: a file or folder, and the lines a GitHub anchor (`#L10`, `#L10-L20`) names.
+export type Linked = { path: string; lines?: [number, number] }
+
+// The file: href of a relative link target and where it leads, resolved from `dir`, or undefined
+// for a URL, an anchor alone or a root path. The query and any other anchor are dropped.
+function linkTarget(target: string, dir: string): { href: string; linked: Linked } | undefined {
   const written = target.startsWith('<') && target.endsWith('>') ? target.slice(1, -1) : target
   if (/^[a-z][a-z0-9+.-]*:/i.test(written) || written.startsWith('#') || written.startsWith('/')) return undefined
   let decoded: string
   try {
-    decoded = decodeURIComponent(written.replace(/#.*$/, ''))
+    decoded = decodeURIComponent(written.replace(/[?#].*$/, ''))
   } catch {
     return undefined
   }
-  if (!/\.(md|markdown)$/i.test(decoded)) return undefined
+  if (!decoded) return undefined
   const path = normalize(`${dir}/${decoded}`)
-  return { href: `file://${encodeURI(path)}`, path }
+  const anchor = /#L(\d+)(?:C\d+)?(?:-L(\d+)(?:C\d+)?)?$/.exec(written)
+  const from = Number(anchor?.[1])
+  const to = Number(anchor?.[2] ?? anchor?.[1])
+  if (!anchor || from < 1 || to < 1) return { href: `file://${encodeURI(path)}`, linked: { path } }
+  const lines: [number, number] = [Math.min(from, to), Math.max(from, to)]
+  const fragment = lines[0] === lines[1] ? `#L${lines[0]}` : `#L${lines[0]}-L${lines[1]}`
+  return { href: `file://${encodeURI(path)}${fragment}`, linked: { path, lines } }
 }
 
-// Relative links to Markdown files (inline, in angle brackets, or by a reference definition)
+// Relative links to files and folders (inline, in angle brackets, or by a reference definition)
 // turned into file: links the pane answers, resolved from `dir`; links in code, images and
-// other targets left as written. Returns the text and each new link's path by its href.
-export function linkify(markdown: string, dir: string): { text: string; links: Map<string, string> } {
-  const links = new Map<string, string>()
+// other targets left as written. Returns the text and where each new link leads by its href.
+export function linkify(markdown: string, dir: string): { text: string; links: Map<string, Linked> } {
+  const links = new Map<string, Linked>()
   const answer = (target: string) => {
-    const found = markdownTarget(target, dir)
-    if (found) links.set(found.href, found.path)
+    const found = linkTarget(target, dir)
+    if (found) links.set(found.href, found.linked)
     return found?.href
   }
   const inline = /(!?)\[([^\]]*)\]\(\s*(<[^>]*>|[^)\s]+)(\s+"[^"]*")?\s*\)/g

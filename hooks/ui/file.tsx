@@ -88,9 +88,12 @@ export async function drawFile($: Api, e: RenderInput<'Pane'>, say: Messages, sh
     isCut = drawn.isCut
     const { text: markdown, links } = linkify(frontMatter(drawn.text), dirname(shown.path))
     const pressable = [...links.keys()].slice(0, MAX_LINKS)
-    const press = (link: { href: string }) => {
-      const path = links.get(link.href)
-      if (path) return follow($, say, { view: 'file', path })
+    // A link leads to a folder's tree, or to a file at the lines its anchor names.
+    const press = async (link: { href: string }) => {
+      const to = links.get(link.href)
+      if (!to) return
+      const isDir = (await $.fs.stat(to.path).catch(() => undefined))?.kind === 'dir'
+      await follow($, say, isDir ? { view: 'tree', root: to.path } : { view: 'file', path: to.path, ...(to.lines ? { lines: to.lines } : {}) })
     }
     body = pressable.length ? (
       <Markdown key="doc" text={markdown} pressableLinks={pressable} onLinkPress={press} />
