@@ -1,5 +1,5 @@
-// Running git to read a repository, and reading the clock, for the views that read again while
-// shown.
+// Running git to read a repository, the clock, and when a view that reads again while shown is
+// due.
 
 import type { EngineInterface } from 'claude-code'
 

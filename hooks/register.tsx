@@ -20,7 +20,8 @@ import { markTreeStale, resetTree, tickTree } from './views/tree'
 // See docs/design.md.
 //
 // This file wires the events: nav.ts keeps the pane and Back, views/ each view's state and
-// steps, ui/ draws, find.ts finds files, prompt.ts writes into the prompt, and pure/ is pure.
+// steps, ui/ draws, find.ts finds files, prompt.ts writes into the prompt, run.ts runs git and
+// times the reads, and pure/ is pure.
 
 type Api = EngineInterface
 
