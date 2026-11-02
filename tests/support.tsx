@@ -128,7 +128,7 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     record.ran.push({ argv: [...e.argv], cwd: e.init?.cwd, env: e.init?.env, stdin: e.init?.stdin, timeoutMs: e.init?.timeoutMs })
     const custom = record.commands[e.argv.join(' ')] ?? record.commands[e.argv[0] ?? '']
     const run =
-      e.argv[0] === 'git' && e.argv[1] === 'ls-files' && !custom
+      e.argv[0] === 'git' && e.argv[1] === 'ls-files' && !e.argv.includes('--ignored') && !custom
         ? record.git
         : e.argv[0] === 'fd'
           ? record.fd

@@ -70,11 +70,15 @@ export function named(message: SessionMessage): string[] {
   return found.reverse()
 }
 
-// A completion row for a label: the file name, and beside it the folder when it has one.
+// A completion row for a label: the name (a folder's with its slash), and beside it the folder
+// it is in when there is one.
 export function suggestion(label: string): { text: string; label: string; description?: string } {
-  const slash = label.lastIndexOf('/')
-  if (slash < 0) return { text: label, label }
-  return { text: label, label: label.slice(slash + 1), description: label.slice(0, slash) || '/' }
+  const isDir = label.endsWith('/')
+  const bare = isDir ? label.slice(0, -1) : label
+  const slash = bare.lastIndexOf('/')
+  const name = `${bare.slice(slash + 1)}${isDir ? '/' : ''}`
+  if (slash < 0) return { text: label, label: name }
+  return { text: label, label: name, description: bare.slice(0, slash) || '/' }
 }
 
 // Whether every character of `query` appears in `text` in order, ignoring case.
@@ -94,7 +98,7 @@ function fuzzy(query: string, text: string): boolean {
 export function rank(query: string, labels: readonly string[]): string[] {
   const q = query.toLowerCase()
   const tier = (label: string): number => {
-    const name = basename(label).toLowerCase()
+    const name = basename(label.replace(/\/$/, '')).toLowerCase()
     if (name.includes(q)) return 0
     if (label.toLowerCase().includes(q)) return 1
     if (fuzzy(q, name)) return 2

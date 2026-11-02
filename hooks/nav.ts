@@ -10,6 +10,7 @@ import type { Messages } from './messages'
 import { commandLocation, loadCommand } from './views/command'
 import { fileLocation, loadFile } from './views/file'
 import type { Opened } from './views/file'
+import { loadTree, treeLocation } from './views/tree'
 
 type Api = EngineInterface
 
@@ -34,6 +35,8 @@ async function load($: Api, say: Messages, to: Location, kind: Kind): Promise<Op
       return loadFile($, say, to.path, to.lines, kind)
     case 'command':
       return loadCommand($, say)
+    case 'tree':
+      return loadTree($, say, to.root)
     default:
       return { error: say.emptyPane }
   }
@@ -46,6 +49,8 @@ async function here($: Api, view: ViewName): Promise<Location | undefined> {
       return fileLocation($)
     case 'command':
       return commandLocation($)
+    case 'tree':
+      return treeLocation($)
     default:
       return undefined
   }
@@ -81,7 +86,7 @@ async function openPane($: Api, opened: Exclude<Opened, { error: string }>): Pro
 
 // Goes to `to` and shows the pane. `anew` (a command) starts Back over; `follow` (a link or a
 // click in the pane) lets Back return to where the pane was.
-export async function navigate($: Api, say: Messages, to: Location, how: 'anew' | 'follow', kind: Kind = 'any'): Promise<Opened> {
+export async function navigate($: Api, say: Messages, to: Location, how: 'anew' | 'follow', kind: Kind = 'place'): Promise<Opened> {
   const state = await read($, nav)
   const from = how === 'follow' && state.isOpen && state.view ? await here($, state.view) : undefined
   const opened = await load($, say, to, kind)
@@ -108,7 +113,7 @@ export async function goBack($: Api, say: Messages): Promise<void> {
   const previous = state.back[state.back.length - 1]
   if (previous === undefined) return
   const rest = state.back.slice(0, -1)
-  const opened = await load($, say, previous, 'any')
+  const opened = await load($, say, previous, 'place')
   if ('error' in opened) {
     $.ui.toast(opened.error)
     await update($, nav, current => ({ ...current, back: rest }))
@@ -123,7 +128,7 @@ export async function reopen($: Api, say: Messages): Promise<Opened | undefined>
   const state = await read($, nav)
   const to = state.view ? await here($, state.view) : undefined
   if (!to) return undefined
-  const opened = await load($, say, to, 'any')
+  const opened = await load($, say, to, 'place')
   if ('error' in opened) return opened
   await update($, nav, current => ({ ...current, isOpen: true }))
   await openPane($, opened)
@@ -133,7 +138,7 @@ export async function reopen($: Api, say: Messages): Promise<Opened | undefined>
 // Shows `view` where it was, or its hint when it never showed anything; Back is left as it is.
 export async function switchView($: Api, say: Messages, view: ViewName): Promise<void> {
   const to = await here($, view)
-  const opened = to ? await load($, say, to, 'any') : { title: say.views[view], label: say.views[view], rows: 3 }
+  const opened = to ? await load($, say, to, 'place') : { title: say.views[view], label: say.views[view], rows: 3 }
   if ('error' in opened) {
     $.ui.toast(opened.error)
     return

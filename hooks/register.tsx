@@ -1,6 +1,6 @@
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { candidates, existing, recentMessages, resetFind, resolveFile, where } from './find'
+import { candidates, recentMessages, existing, resetFind, resolvePlace, where } from './find'
 import type { Kind } from './find'
 import { configureLanguage, messages } from './messages'
 import type { Messages } from './messages'
@@ -11,6 +11,7 @@ import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
 import { configureCommand, recentCommands, runCommand } from './views/command'
 import { offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
+import { markTreeStale, resetTree, tickTree } from './views/tree'
 import type { Opened } from './views/file'
 
 // peek: look at a file, a folder, Git or a command's output in a pane beside the chat, and quote
@@ -26,31 +27,39 @@ type Api = EngineInterface
 const WATCH_MS = 1000
 const MAX_SUGGESTIONS = 10
 
+// The tools whose calls may change files.
+const CHANGING_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+
+// Every tick: the file shown is checked for changes on disk, the tree is read again when due.
+async function watch($: Api): Promise<void> {
+  if (await isShowing($, 'file')) await refreshFile($)
+  if (await isShowing($, 'tree')) await tickTree($, await messages($))
+}
+
 // What a command says when it opened something, or why not.
 function report(say: Messages, opened: Opened): { text: string } {
   return { text: 'error' in opened ? opened.error : say.opened(opened.label) }
 }
 
-// /peek: reopens the last place without a target, else opens what the target names.
+// /peek: reopens the last place without a target (the working directory the first time), else
+// opens what the target names: a command's output, Git, a file at its lines, or a folder.
 async function peekCommand($: Api, args: string): Promise<{ text: string }> {
   const say = await messages($)
   const at = await where($)
   const target = parseTarget(args)
   if (target.kind === 'empty') {
     const reopened = await reopen($, say)
-    if (reopened) return report(say, reopened)
-    const [path] = await existing($, at, await recentMessages($), 'any')
-    if (!path) return { text: say.noneRecent }
-    return report(say, await navigate($, say, { view: 'file', path }, 'anew'))
+    return report(say, reopened ?? (await navigate($, say, { view: 'tree', root: at.cwd }, 'anew')))
   }
   if (target.kind === 'command') {
     await runCommand($, target.command)
     return report(say, await navigate($, say, { view: 'command' }, 'anew'))
   }
   if (target.kind !== 'path') return { text: say.notFound(args.trim()) }
-  const path = await resolveFile($, at, target.path, 'any')
-  if (!path) return { text: say.notFound(args.trim()) }
-  return report(say, await navigate($, say, { view: 'file', path, ...(target.lines ? { lines: target.lines } : {}) }, 'anew'))
+  const place = await resolvePlace($, at, target.path, 'place')
+  if (!place) return { text: say.notFound(args.trim()) }
+  if (place.isDir) return report(say, await navigate($, say, { view: 'tree', root: place.path }, 'anew'))
+  return report(say, await navigate($, say, { view: 'file', path: place.path, ...(target.lines ? { lines: target.lines } : {}) }, 'anew'))
 }
 
 // /md: the Markdown named, or without one the newest .md the conversation named.
@@ -60,7 +69,7 @@ async function mdCommand($: Api, args: string): Promise<{ text: string }> {
   const target = parseTarget(args)
   const text = target.kind === 'path' ? target.path : args.trim()
   const path = text
-    ? await resolveFile($, at, text, 'markdown')
+    ? (await resolvePlace($, at, text, 'markdown'))?.path
     : (await existing($, at, await recentMessages($), 'markdown'))[0]
   if (!path) return { text: text ? say.notFound(text) : say.noneRecentMarkdown }
   const lines = target.kind === 'path' ? target.lines : undefined
@@ -73,15 +82,14 @@ export const register: Register = (on, options: PluginOptions) => {
   configureCommand(options.commandTimeoutSeconds)
   resetFind()
   resetFile()
+  resetTree()
 
   on('session.start', async ($, e, next) => {
     const say = await messages($)
     await $.command.register({ name: 'peek', description: say.peekCommand, argumentHint: say.peekArgument, immediate: true })
     await $.command.register({ name: 'md', description: say.mdCommand, argumentHint: say.mdArgument, immediate: true })
     $.clock.every(WATCH_MS, () => {
-      isShowing($, 'file')
-        .then(showing => (showing ? refreshFile($) : undefined))
-        .catch(() => undefined)
+      watch($).catch(() => undefined)
     })
 
     return next(e)
@@ -106,7 +114,7 @@ export const register: Register = (on, options: PluginOptions) => {
           .map(run => ({ text: `!${run}` }))
         return { suggestions: [...base.suggestions, ...mine] }
       }
-      const kind: Kind = command === 'md' ? 'markdown' : 'any'
+      const kind: Kind = command === 'md' ? 'markdown' : 'place'
       const mine = rank(e.token, await candidates($, await where($), kind, false))
         .slice(0, MAX_SUGGESTIONS)
         .map(suggestion)
@@ -126,7 +134,16 @@ export const register: Register = (on, options: PluginOptions) => {
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    markTreeStale()
     await offerNamed($).catch(() => undefined)
+
+    return result
+  })
+
+  // A command or an edit of Claude's may change what the tree shows.
+  on('tool.call', async ($, e, next) => {
+    const result = await next(e)
+    if (CHANGING_TOOLS.has(e.tool)) markTreeStale()
 
     return result
   })

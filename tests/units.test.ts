@@ -6,6 +6,8 @@ import { absolute, describe, dirname, named, normalize, rank } from '../hooks/pu
 import { cite, locate, quote, ungutter } from '../hooks/pure/quote'
 import { parseTarget } from '../hooks/pure/target'
 import { clean, dropShellNoise } from '../hooks/pure/terminal'
+import { statusBadges } from '../hooks/pure/git'
+import { sortEntries, treeRows, treeText } from '../hooks/pure/tree'
 import type { Change } from '../hooks/pure/diff'
 
 // A small deterministic generator, so a failure repeats.
@@ -187,4 +189,37 @@ test('terminal output loses escape sequences and control characters, and keeps w
 test('a fence is longer than any run of backticks inside it', () => {
   expect(fenced('plain\n')).toBe('```\nplain\n```')
   expect(fenced('has ```` four')).toBe('`````\nhas ```` four\n`````')
+})
+
+test('git status marks files and the folders above them, within the folder shown', () => {
+  const output = ' M src/a.ts\0A  src/new.ts\0 D gone.md\0R  src/b.ts\0src/old.ts\0?? scratch/\0?? docs/x.md\0'
+  expect(statusBadges(output, '')).toEqual({ 'src/a.ts': 'M', src: '•', 'src/new.ts': 'A', 'gone.md': 'D', 'src/b.ts': 'R', scratch: '?', 'docs/x.md': '?', docs: '•' })
+  expect(statusBadges(output, 'src')).toEqual({ 'a.ts': 'M', 'new.ts': 'A', 'b.ts': 'R' })
+})
+
+test('a tree lists folders first, dims what git ignores below an ignored folder, and holds back a long folder', () => {
+  const entries = sortEntries([
+    { name: 'b.md', kind: 'file' },
+    { name: '.git', kind: 'dir' },
+    { name: 'Zeta', kind: 'dir' },
+    { name: 'a.md', kind: 'file' },
+    { name: 'node_modules', kind: 'dir' },
+  ])
+  expect(entries.map(entry => entry.name)).toEqual(['node_modules', 'Zeta', 'a.md', 'b.md'])
+  const many = Array.from({ length: 102 }, (_, i) => ({ name: `f${i}`, kind: 'file' as const }))
+  const input = {
+    listings: { '': entries, node_modules: [{ name: 'x', kind: 'dir' as const }], Zeta: many },
+    expanded: ['node_modules', 'Zeta'],
+    full: [],
+    badges: {},
+    ignored: ['node_modules/'],
+  }
+  const { rows } = treeRows(input)
+  expect(rows.slice(0, 3).map(row => [row.prefix + row.name, row.isIgnored])).toEqual([
+    ['├── node_modules', true],
+    ['│   └── x', true],
+    ['├── Zeta', false],
+  ])
+  expect(rows.filter(row => row.kind === 'more')).toEqual([{ path: 'Zeta', name: '', kind: 'more', prefix: '│   └── ', isIgnored: false, hidden: 2 }])
+  expect(treeText('r/', rows, n => `+${n}`).split('\n').slice(-3)).toEqual(['│   └── +2', '├── a.md', '└── b.md'])
 })

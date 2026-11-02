@@ -6,8 +6,10 @@ import { messages } from '../messages'
 import { navState } from '../nav'
 import { shownCommand } from '../views/command'
 import { shownFile } from '../views/file'
+import { shownTree } from '../views/tree'
 import { drawCommand } from './command'
 import { drawFile } from './file'
+import { drawTree } from './tree'
 
 type Api = EngineInterface
 
@@ -18,12 +20,16 @@ export async function drawPane($: Api, e: RenderInput<'Pane'>): Promise<RenderEl
     const shown = await shownFile($)
     if (shown) return drawFile($, e, say, shown)
   }
+  if (state.view === 'tree') {
+    const shown = await shownTree($)
+    if (shown) return drawTree($, e, say, shown)
+  }
   if (state.view === 'command') {
     const shown = await shownCommand($)
     if (shown) return drawCommand($, e, say, shown)
   }
   const { Box, Text } = $.ui.resolve(e)
-  const hint = state.view === 'command' ? say.commandHint : say.emptyPane
+  const hint = state.view === 'command' ? say.commandHint : state.view === 'tree' ? say.treeHint : say.emptyPane
   return (
     <Box key="hint">
       <Text dimColor>{hint}</Text>

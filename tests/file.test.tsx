@@ -163,16 +163,16 @@ test('/peek with part of a name looks through every file, the conversation first
   expect((await pane($, 'peek-line')).keyed).toBeDefined()
 })
 
-test('/peek without a target opens the newest file named, then the last one shown', async ($, on) => {
+test('/peek without a target opens the working directory, then the last place shown', async ($, on) => {
   const files = { '/proj/src/a.ts': 'a', '/proj/b.md': 'b' }
-  const r = engine(on, files, [assistant('See b.md'), user('ok'), assistant('Changed src/a.ts:1 for you.')])
+  const r = engine(on, files, [assistant('See b.md')])
 
   await peek($)
-  expect(r.opened).toEqual(['a.ts'])
+  expect(r.opened).toEqual(['proj/'])
   await md($, 'b.md')
   await press($, 'close')
   await peek($)
-  expect(r.opened).toEqual(['a.ts', 'b.md', 'b.md'])
+  expect(r.opened).toEqual(['proj/', 'b.md', 'b.md'])
 })
 
 test('the band inserts the shown file as an @ mention after the draft', async ($, on) => {

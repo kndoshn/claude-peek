@@ -7,6 +7,7 @@ import { navState } from './nav'
 import { quote } from './pure/quote'
 import { commandBlock, commandQuote } from './views/command'
 import { fileMention, fileQuote } from './views/file'
+import { treeBlock, treeMention, treeQuote } from './views/tree'
 
 type Api = EngineInterface
 
@@ -40,7 +41,9 @@ export async function quoteSelection($: Api, say: Messages): Promise<void> {
       ? await fileQuote($, selected.text)
       : inPane && state.view === 'command'
         ? await commandQuote($, selected.text)
-        : undefined
+        : inPane && state.view === 'tree'
+          ? await treeQuote($, say, selected.text)
+          : undefined
   const text = from?.text ?? selected.text
   await appendBlock($, from?.head ? `${from.head}\n${quote(text)}` : quote(text))
 }
@@ -48,13 +51,14 @@ export async function quoteSelection($: Api, say: Messages): Promise<void> {
 // Mentions the file or folder the view points at, so Claude reads it.
 export async function mention($: Api): Promise<void> {
   const state = await navState($)
-  const label = state.view === 'file' ? await fileMention($) : undefined
+  const label = state.view === 'file' ? await fileMention($) : state.view === 'tree' ? await treeMention($) : undefined
   if (label) await appendWord($, `@${label}`)
 }
 
-// Quotes the whole of what the view shows: a command's output under the command.
-export async function quoteAll($: Api): Promise<void> {
+// Quotes the whole of what the view shows: a command's output under the command, a tree under
+// its folder.
+export async function quoteAll($: Api, say: Messages): Promise<void> {
   const state = await navState($)
-  const block = state.view === 'command' ? await commandBlock($) : undefined
+  const block = state.view === 'command' ? await commandBlock($) : state.view === 'tree' ? await treeBlock($, say) : undefined
   if (block) await appendBlock($, block)
 }

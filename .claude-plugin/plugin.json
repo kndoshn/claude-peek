@@ -1,6 +1,6 @@
 {
   "name": "peek",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt",
   "license": "MIT",
   "keywords": [

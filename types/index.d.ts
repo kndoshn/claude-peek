@@ -45,12 +45,31 @@ export type CommandRun = {
   stoppedAfter?: number
 }
 
+// The folder the tree view shows: its path, how it is labelled (the header, from the home; the
+// heading of a quote and a mention, from the working directory; the name atop the tree), its
+// branch in a repository, the folders opened and shown whole, the folder chosen, each opened
+// folder's entries, Git's marks and what git ignores.
+export type TreeState = {
+  root: string
+  label: string
+  heading: string
+  name: string
+  branch?: string
+  expanded: string[]
+  full: string[]
+  selected: string
+  listings: Record<string, { name: string; kind: 'file' | 'dir' | 'other' }[]>
+  badges: Record<string, string>
+  ignored: string[]
+}
+
 declare module 'claude-code' {
   interface PluginState {
     peek: {
       nav: Shaped<Nav>
       file: Shaped<FileDoc | null>
       command: Shaped<CommandRun | null>
+      tree: Shaped<TreeState | null>
       // The .md the last reply named, offered in the band until opened or dismissed.
       offer: Shaped<MdFile | null>
     }

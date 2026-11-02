@@ -11,11 +11,12 @@ import { mention, quoteAll, quoteSelection } from '../prompt'
 import { count } from '../pure/diff'
 import { commandOutput, rerunCommand } from '../views/command'
 import { changesOf, dismissOffer, offeredFile, shownFile, toggleFileMode } from '../views/file'
+import { shownTreeText } from '../views/tree'
 
 type Api = EngineInterface
 
 // The views the band switches between, in its order.
-const VIEWS: readonly ViewName[] = ['file', 'command']
+const VIEWS: readonly ViewName[] = ['file', 'tree', 'command']
 
 // The buttons of the file view.
 async function fileButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): Promise<RenderElement[]> {
@@ -48,6 +49,22 @@ async function fileButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages)
   return buttons
 }
 
+// The buttons of the tree view.
+function treeButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
+  const { Button } = $.ui.resolve(e)
+  const copy = async (press: UiPressArgument) => {
+    const text = await shownTreeText($, say)
+    if (text === undefined) return
+    const copied = await $.ui.copy({ text, surface: press.surface })
+    if (copied.isCopied) $.ui.toast(say.copied)
+  }
+  return [
+    <Button key="quote-tree" label={say.quoteTree} hotkey="t" onPress={() => quoteAll($, say)} />,
+    <Button key="mention" label={say.mention} hotkey="a" onPress={() => mention($)} />,
+    <Button key="copy" label={say.copy} hotkey="c" onPress={copy} />,
+  ]
+}
+
 // The buttons of the command view.
 function commandButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
   const { Button } = $.ui.resolve(e)
@@ -58,7 +75,7 @@ function commandButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): R
     if (copied.isCopied) $.ui.toast(say.copied)
   }
   return [
-    <Button key="quote-all" label={say.quoteAll} hotkey="t" onPress={() => quoteAll($)} />,
+    <Button key="quote-all" label={say.quoteAll} hotkey="t" onPress={() => quoteAll($, say)} />,
     <Button key="rerun" label={say.rerun} hotkey="r" onPress={() => rerunCommand($)} />,
     <Button key="copy" label={say.copy} hotkey="c" onPress={copy} />,
   ]
@@ -72,8 +89,15 @@ export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<R
   if (e.props.hasSurvey || (!isOpen && !offered)) return undefined
   const { Box, Button, Text } = $.ui.resolve(e)
   const say = await messages($)
-  const buttons =
-    !isOpen ? [] : state.view === 'file' ? await fileButtons($, e, say) : state.view === 'command' ? commandButtons($, e, say) : []
+  const buttons = !isOpen
+    ? []
+    : state.view === 'file'
+      ? await fileButtons($, e, say)
+      : state.view === 'tree'
+        ? treeButtons($, e, say)
+        : state.view === 'command'
+          ? commandButtons($, e, say)
+          : []
 
   const openOffered = async () => {
     if (!offered) return
