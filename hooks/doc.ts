@@ -62,7 +62,8 @@ async function show($: Api, say: Messages, path: string, back: (shown: Doc | nul
     }
   })
   await update($, offer, offered => (offered?.path === path ? null : offered))
-  await $.ui.open({ id: PANE, title: basename(path) })
+  // Escape closes it, from the pane or an idle, empty prompt.
+  await $.ui.open({ id: PANE, title: basename(path), closeOnEscape: true })
   return { label: file.label }
 }
 

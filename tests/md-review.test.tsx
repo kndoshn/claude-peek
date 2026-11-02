@@ -30,6 +30,7 @@ function engine(on: On, files: Files, messages: Message[] = []) {
   const record = {
     clock: mock.clock(on),
     opened: [] as string[],
+    escapes: [] as (boolean | undefined)[],
     closed: [] as string[],
     filled: [] as { text: string; mode?: string }[],
     toasts: [] as string[],
@@ -46,6 +47,7 @@ function engine(on: On, files: Files, messages: Message[] = []) {
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.open', (_, e) => {
     record.opened.push(e.title ?? e.id)
+    record.escapes.push(e.closeOnEscape)
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_, e) => {
@@ -692,4 +694,14 @@ test('a band already drawn redraws when the shown file changes', async ($, on) =
   await ui.press({ key: 'quote' })
   expect(r.filled[0]?.text).toBe('a.md:1\n> one\n\n')
   await ui.unmount()
+})
+
+test('Escape closes the pane, from the pane or an idle empty prompt', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a', '/proj/b.md': '[b](a.md)' })
+  await md($, 'b.md')
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'doc', link: { href: 'file:///proj/a.md' } })
+  await ui.unmount()
+  // Each open sets it anew, so every open asks for it.
+  expect(r.escapes).toEqual([true, true])
 })

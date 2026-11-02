@@ -68,7 +68,8 @@ While a file is open, a row above the prompt has:
   returns to the file. Past about 1000 changed lines, the changed part is shown as replaced
   whole.
 - **← Back**: returns to the file you followed a link from.
-- **Close**: closes the pane. So do Esc and the pane's close mark.
+- **Close**: closes the pane. So do the pane's close mark, and Esc while the pane has the focus or
+  the prompt is empty and Claude is idle.
 
 Click a button, or focus the row (ctrl+x tab, or a click) and press its letter: `q` quote, `s`
 source, `d` changes, `b` back, `o` open the offered file.
