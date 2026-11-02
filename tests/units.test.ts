@@ -2,10 +2,10 @@ import { expect, test } from 'claude-code/testing'
 
 import { diff, hunks } from '../hooks/pure/diff'
 import { clip, fenced, frontMatter, linkify } from '../hooks/pure/markdown'
-import { absolute, closest, describe, dirname, named, normalize, rank } from '../hooks/pure/paths'
+import { absolute, closest, describe, dirname, join, named, normalize, rank } from '../hooks/pure/paths'
 import { cite, locate, quote, ungutter } from '../hooks/pure/quote'
 import { parseTarget } from '../hooks/pure/target'
-import { clean, dropShellNoise } from '../hooks/pure/terminal'
+import { clean, dropShellNoise, visible } from '../hooks/pure/terminal'
 import { logLineText, parseLog, parseStatus, splitPatch, statusBadges } from '../hooks/pure/git'
 import { sortEntries, treeRows, treeText } from '../hooks/pure/tree'
 import type { Change } from '../hooks/pure/diff'
@@ -94,6 +94,8 @@ test('paths resolve from the working directory or the home and fold dots', () =>
   expect(normalize('/a/../../b')).toBe('/b')
   expect(dirname('/a.md')).toBe('/')
   expect(dirname('/d/a.md')).toBe('/d')
+  expect(join('/proj', 'docs/a.md')).toBe('/proj/docs/a.md')
+  expect(join('/', 'etc')).toBe('/etc')
 })
 
 test('a path is labelled from the working directory, else from the home, else in full', () => {
@@ -158,6 +160,8 @@ test('numbers are taken off a selection only when they run on and match the sour
 test('front matter becomes a YAML block only at the very top', () => {
   expect(frontMatter('---\na: 1\n---\nbody')).toBe('```yaml\na: 1\n```\nbody')
   expect(frontMatter('text\n---\na: 1\n---\n')).toBe('text\n---\na: 1\n---\n')
+  // A byte order mark before it, as some editors write, is no text.
+  expect(frontMatter('\ufeff---\na: 1\n---\nbody')).toBe('```yaml\na: 1\n```\nbody')
 })
 
 test('a cut ends after a whole line, or for a diff after a whole hunk', () => {
@@ -192,7 +196,17 @@ test('terminal output loses escape sequences and control characters, and keeps w
   expect(clean('a\r\nb\r\n')).toBe('a\nb\n')
   expect(clean('1/3\r2/3\r3/3 done')).toBe('3/3 done')
   expect(clean('tab\there\u0008\u0000')).toBe('tab\there')
+  expect(clean('next\u0085line')).toBe('nextline')
   expect(dropShellNoise("(eval):1: can't change option: zle\nreal error")).toBe('real error')
+})
+
+test('a control character shows as its picture, so a drawing takes any text', () => {
+  expect(visible('build \u001b[32mok\u001b[0m')).toBe('build ␛[32mok␛[0m')
+  expect(visible('a\r\nb\r\n')).toBe('a\nb\n')
+  expect(visible('Icon\r')).toBe('Icon␍')
+  expect(visible('page\fbreak\u0007\u0000\u007f')).toBe('page␌break␇␀␡')
+  expect(visible('next\u0085line')).toBe('next\ufffdline')
+  expect(visible('tab\there\nline sep')).toBe('tab\there\nline sep')
 })
 
 test('a fence is longer than any run of backticks inside it', () => {
@@ -231,6 +245,12 @@ test('a tree lists folders first, dims what git ignores below an ignored folder,
   ])
   expect(rows.filter(row => row.kind === 'more')).toEqual([{ path: 'Zeta', name: '', kind: 'more', prefix: '│   └── ', isIgnored: false, hidden: 2 }])
   expect(treeText('r/', rows, n => `+${n}`).split('\n').slice(-3)).toEqual(['│   └── +2', '├── a.md', '└── b.md'])
+  // git names a folder it ignores whole, asked from inside, as ./
+  const inside = treeRows({ ...input, ignored: ['./'] }).rows
+  expect(inside.every(row => row.kind === 'more' || row.isIgnored)).toBe(true)
+  // A name's control characters show as their pictures, as the pane draws them.
+  const named = treeRows({ listings: { '': [{ name: 'Icon\r', kind: 'file' }] }, expanded: [], full: [], badges: {}, ignored: [] }).rows
+  expect(treeText('r/', named, n => `+${n}`)).toBe('r/\n└── Icon␍')
 })
 
 test('porcelain v2 status reads the branch, upstream, stash and files of each kind, renames and conflicts too', () => {

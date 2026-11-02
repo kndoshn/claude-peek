@@ -310,6 +310,62 @@ test('a change to the open file, by Claude or anything else, redraws the pane', 
   expect((await pane($)).header).not.toContain('deleted')
 })
 
+test('a file gone from the disk is still there to go back to, from the band or /peek, marked as gone', async ($, on) => {
+  const files: Files = { '/proj/a.md': 'kept', '/proj/b.md': 'b', '/proj/c.txt': 'c' }
+  const r = engine(on, files)
+  await start($)
+  await md($, 'a.md')
+  delete files['/proj/a.md']
+  await r.clock.advance(1000)
+
+  await press($, 'view:tree')
+  await press($, 'view:file')
+  expect(r.toasts).toEqual([])
+  expect(await shown($)).toBe('kept')
+  expect((await pane($)).header).toContain('deleted')
+
+  await press($, 'close')
+  expect((await peek($)).text).toBe('Opened a.md')
+  expect((await pane($)).header).toContain('deleted')
+
+  // Opened before it went and seen gone only now, it is marked too.
+  await md($, 'b.md')
+  delete files['/proj/b.md']
+  await press($, 'view:tree')
+  await press($, 'view:file')
+  expect(r.toasts).toEqual([])
+  expect((await pane($)).header).toContain('deleted')
+})
+
+test('control characters in a file show as their pictures, in every view of it and in its name', async ($, on) => {
+  const files: Files = {
+    '/proj/build.txt': 'build \u001b[32mok\u001b[0m\npage\fbreak\n',
+    '/proj/notes.md': '---\r\ntitle: Notes\r\n---\r\n# Notes\u0007\r\n',
+    '/proj/odd\u001bname.txt': 'x',
+  }
+  const r = engine(on, files)
+  await start($)
+
+  await peek($, 'build.txt')
+  expect((await pane($)).code?.source).toBe('build ␛[32mok␛[0m\npage␌break\n')
+  await peek($, 'build.txt:2')
+  expect((await pane($)).codes.map(code => code.source)).toEqual(['build ␛[32mok␛[0m', 'page␌break'])
+  files['/proj/build.txt'] = 'build \u001b[31mfail\u001b[0m\npage\fbreak\n'
+  r.mtimes['/proj/build.txt'] = 5
+  await r.clock.advance(1000)
+  await press($, 'changes')
+  expect((await pane($)).code?.source).toContain('+build ␛[31mfail␛[0m')
+
+  // Line endings of CRLF read as lines, so the front matter is found.
+  await md($, 'notes.md')
+  expect(await shown($)).toBe('```yaml\ntitle: Notes\n```\n# Notes␇\n')
+  expect((await pane($)).header).toBe('notes.md · 4 lines')
+
+  await peek($, 'odd\u001bname.txt')
+  expect(r.opened.at(-1)).toBe('odd␛name.txt')
+  expect((await pane($)).header).toBe('odd␛name.txt · 1 line')
+})
+
 test('the source view shows the Markdown as written, numbered by line, and toggles back', async ($, on) => {
   engine(on, { '/proj/a.md': '# A\n\n**b**\n' })
   await md($, 'a.md')

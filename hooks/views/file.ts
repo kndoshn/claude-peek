@@ -45,13 +45,25 @@ export function resetFile(): void {
   compared = undefined
 }
 
+// The file's text, or why it cannot be shown. The file shown that cannot be read now keeps what
+// was last read of it, marked when it is gone from the disk, as refreshFile keeps it on screen.
+async function current($: Api, path: string): Promise<{ text: string; mtimeMs: number; isDeleted: boolean } | { problem: 'unreadable' | 'binary' | 'large' }> {
+  const found = await load($, path)
+  if (!('problem' in found)) return { ...found, isDeleted: false }
+  const shown = await read($, file)
+  if (shown?.path !== path) return found
+  const now = await mtime($, path)
+  return { text: shown.text, mtimeMs: now ?? shown.mtimeMs, isDeleted: now === undefined }
+}
+
 // Loads `path` into the file view, at `lines` when given. The same file loaded again keeps its
-// base and mode; another starts rendered (Markdown) or as source, its text as read the base.
-// Lines show the source. `kind` markdown refuses any other file.
+// base and mode, and what was read of it when it cannot be read now; another starts rendered
+// (Markdown) or as source, its text as read the base. Lines show the source. `kind` markdown
+// refuses any other file.
 export async function loadFile($: Api, say: Messages, path: string, at: [number, number] | undefined, kind: Kind): Promise<Opened> {
   const isMarkdown = MARKDOWN.test(path)
   if (kind === 'markdown' && !isMarkdown) return { error: say.notMarkdown(path) }
-  const loaded = await load($, path)
+  const loaded = await current($, path)
   if ('problem' in loaded) {
     const problems = { unreadable: say.unreadable, binary: say.notText, large: say.tooLarge }
     return { error: problems[loaded.problem](path) }
@@ -64,7 +76,6 @@ export async function loadFile($: Api, say: Messages, path: string, at: [number,
       ...described,
       ...loaded,
       base: same?.base ?? loaded.text,
-      isDeleted: false,
       isMarkdown,
       mode,
       ...(at ? { lines: at } : {}),
@@ -111,9 +122,9 @@ export async function rebaseFile($: Api): Promise<void> {
   )
 }
 
-// Reads the shown file again when it changed on disk since it was read. A file gone stays shown,
-// marked as gone until it is back; one there that cannot be shown any more (too large, binary)
-// keeps what was shown until it changes again.
+// Reads the shown file again when it changed on disk since it was read, or went or came back. A
+// file gone stays shown, marked as gone until it is back; one there that cannot be shown any more
+// (too large, binary) keeps what was shown until it changes again.
 export async function refreshFile($: Api): Promise<void> {
   if (refreshing) return
   refreshing = true
@@ -121,16 +132,10 @@ export async function refreshFile($: Api): Promise<void> {
     const shown = await read($, file)
     if (!shown) return
     const now = await mtime($, shown.path)
-    if (now === shown.mtimeMs && !shown.isDeleted) return
-    const isShown = (current: FileDoc | null): current is FileDoc => current?.path === shown.path
-    if (now === undefined) {
-      if (!shown.isDeleted) await update($, file, current => (isShown(current) ? { ...current, isDeleted: true } : current))
-      return
-    }
-    const loaded = await load($, shown.path)
-    // What was read; else the time alone, so the file is not read again until it changes.
-    const found = 'text' in loaded ? loaded : { mtimeMs: now }
-    await update($, file, current => (isShown(current) ? { ...current, ...found, isDeleted: false } : current))
+    if (now === undefined ? shown.isDeleted : now === shown.mtimeMs && !shown.isDeleted) return
+    const loaded = await current($, shown.path)
+    if ('problem' in loaded) return
+    await update($, file, held => (held?.path === shown.path ? { ...held, ...loaded } : held))
   } finally {
     refreshing = false
   }

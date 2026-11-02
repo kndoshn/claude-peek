@@ -29,6 +29,11 @@ export function dirname(path: string): string {
   return path.slice(0, Math.max(path.lastIndexOf('/'), 0)) || '/'
 }
 
+// `name` (a name or a relative path) in the folder `dir`, without a doubled slash under /.
+export function join(dir: string, name: string): string {
+  return dir === '/' ? `/${name}` : `${dir}/${name}`
+}
+
 // An absolute path with its `.` and `..` segments folded.
 export function normalize(path: string): string {
   const parts: string[] = []

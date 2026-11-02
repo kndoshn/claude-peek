@@ -1,6 +1,7 @@
 // A folder's tree as rows and as text, from the listings of the folders opened. Pure.
 
 import type { TreeEntry } from '../../types'
+import { visible } from './terminal'
 
 // One row: an entry with the lines that lead to it, its Git mark and whether git ignores it; or
 // the row standing for the entries a long folder holds back.
@@ -38,10 +39,11 @@ export function sortEntries(entries: readonly TreeEntry[]): TreeEntry[] {
     .sort((a, b) => Number(b.kind === 'dir') - Number(a.kind === 'dir') || a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
 }
 
-// Whether git ignores `path`: it, or a folder it is in, is on the list.
+// Whether git ignores `path`: it, or a folder it is in, is on the list; everything is when the
+// list holds ./, the shown folder itself.
 function ignoredAt(path: string, kind: TreeEntry['kind'], ignored: readonly string[]): boolean {
   const own = kind === 'dir' ? `${path}/` : path
-  return ignored.some(entry => own === entry || (entry.endsWith('/') && own.startsWith(entry)))
+  return ignored.some(entry => entry === './' || own === entry || (entry.endsWith('/') && own.startsWith(entry)))
 }
 
 // The rows of the tree, the folders in `expanded` opened, cut at MAX_ROWS.
@@ -78,10 +80,11 @@ export function treeRows(input: TreeInput): { rows: TreeRow[]; isCut: boolean } 
   return { rows, isCut }
 }
 
-// A row as text: its lines, its name (a folder's with a slash) and its Git mark.
+// A row as text, as the pane draws it: its lines, its name (a folder's with a slash) and its Git
+// mark.
 function rowText(row: TreeRow, more: (hidden: number) => string): string {
   if (row.kind === 'more') return `${row.prefix}${more(row.hidden ?? 0)}`
-  return `${row.prefix}${row.name}${row.kind === 'dir' ? '/' : ''}${row.badge ? ` ${row.badge}` : ''}`
+  return `${row.prefix}${visible(row.name)}${row.kind === 'dir' ? '/' : ''}${row.badge ? ` ${row.badge}` : ''}`
 }
 
 // The tree as `tree` prints it: the root's name, then a line a row.

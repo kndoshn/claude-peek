@@ -99,7 +99,9 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
       isLocked: false,
     })),
   }))
-  const isDir = (path: string) => Object.keys(files).some(file => file.startsWith(`${path}/`))
+  // What a path's entries start with: the path and a slash, or for / the slash alone.
+  const under = (path: string) => (path === '/' ? '/' : `${path}/`)
+  const isDir = (path: string) => Object.keys(files).some(file => file.startsWith(under(path)))
   // Where a path leads, the links on the way followed.
   const resolve = (path: string) => {
     for (const [link, target] of Object.entries(record.links)) {
@@ -126,8 +128,8 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     if (!isDir(dir)) throw new Error(`ENOENT: ${asked}`)
     const names = new Map<string, FsEntry>()
     for (const [path, text] of Object.entries(files)) {
-      if (!path.startsWith(`${dir}/`)) continue
-      const [name, ...rest] = path.slice(dir.length + 1).split('/')
+      if (!path.startsWith(under(dir))) continue
+      const [name, ...rest] = path.slice(under(dir).length).split('/')
       if (!name) continue
       names.set(name, rest.length
         ? { name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false }

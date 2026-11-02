@@ -122,6 +122,46 @@ test('a link to a folder opens as a folder when clicked, and a link to a file as
   expect(r.toasts).toEqual([])
 })
 
+test('the top folder / names what is in it from itself, without a doubled slash', async ($, on) => {
+  const r = engine(on, { '/etc/hosts': 'h', '/proj/a.md': 'a' })
+
+  await peek($, '/')
+  expect(r.opened).toEqual(['/'])
+  expect((await pane($)).header).toBe('/')
+  await press($, 'quote-tree')
+  expect(r.filled[0]?.text).toBe('tree /\n```\n/\n├── etc/\n│   └── hosts\n└── proj/\n    └── a.md\n```\n\n')
+  await pressPane($, 'tree:etc')
+  await press($, 'mention')
+  expect(r.filled[1]?.text).toBe('@/etc/ ')
+  await pressPane($, 'tree:etc')
+  await pressPane($, 'tree:etc/hosts')
+  expect(r.opened.at(-1)).toBe('hosts')
+  expect((await pane($)).header).toBe('/etc/hosts · 1 line')
+})
+
+test('a name with control characters shows them as their pictures, and still opens', async ($, on) => {
+  const r = engine(on, { '/proj/docs/Icon\r': '', '/proj/docs/a\u001bb.md': 'x' })
+
+  await peek($, 'docs')
+  expect(await rows($)).toEqual(['├── a␛b.md', '└── Icon␍'])
+  await pressPane($, 'tree:a\u001bb.md')
+  expect(r.toasts).toEqual([])
+  expect(r.opened.at(-1)).toBe('a␛b.md')
+})
+
+test('inside a folder git ignores whole, everything is dimmed', async ($, on) => {
+  const r = engine(on, { '/proj/build/out/a.js': 'a', '/proj/build/b.js': 'b' })
+  r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: 'build/\n' }
+  r.commands['git ls-files -z --others --ignored --exclude-standard --directory'] = { exitCode: 0, stdout: './\0' }
+
+  await peek($, 'build')
+  // The folder was chosen, so its smaller folders still open at first.
+  expect(await rows($)).toEqual(['├── out/', '│   └── a.js', '└── b.js'])
+  const ui = await $.ui.mount(PANE)
+  for (const key of ['tree:out', 'tree:out/a.js', 'tree:b.js']) expect((await ui.find({ key }))?.props.dimColor).toBe(true)
+  await ui.unmount()
+})
+
 test('~ alone is the home folder', async ($, on) => {
   const r = engine(on, { '/home/me/notes/a.md': 'a', '/home/me/repos/github.com/me/x/README.md': 'r' })
   r.commands.ghq = { exitCode: 0, stdout: '/home/me/repos/github.com/me/x\n' }

@@ -56,7 +56,10 @@ language. Binary files and files over 4 MiB do not open. The pane is headed by t
 count and the view; a file too long to draw is cut, and the header says so. The pane checks the
 file every second and redraws when it changed on disk, whether Claude, your editor or a script
 changed it; a file deleted on disk stays shown, marked as deleted, and one that turns binary or
-grows past 4 MiB keeps what was shown. A relative link to another
+grows past 4 MiB keeps what was shown, also when you come back to it from the band or `/peek`.
+A control character shows as its picture (`␛` for an escape, `␌` for a page break), so a log
+with colours still opens, in the file view and in Git alike; front matter is found after a byte
+order mark and with CRLF line endings too. A relative link to another
 Markdown file (`[setup](../setup.md)`, `[setup][ref]`, `[a](<my notes.md>)`) opens that file in
 the pane when clicked. Front matter is drawn as a YAML block.
 

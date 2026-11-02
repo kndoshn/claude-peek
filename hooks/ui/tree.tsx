@@ -5,6 +5,8 @@ import type { EngineInterface, RenderElement, RenderInput } from 'claude-code'
 import type { TreeState } from '../../types'
 import type { Messages } from '../messages'
 import { follow } from '../nav'
+import { join } from '../pure/paths'
+import { visible } from '../pure/terminal'
 import { treeRows } from '../pure/tree'
 import type { TreeRow } from '../pure/tree'
 import { showAll, toggleFolder } from '../views/tree'
@@ -21,7 +23,7 @@ export async function drawTree($: Api, e: RenderInput<'Pane'>, say: Messages, sh
   const press = (row: TreeRow) => {
     if (row.kind === 'more') return showAll($, row.path)
     if (row.kind === 'dir') return toggleFolder($, row.path)
-    return follow($, say, { view: 'file', path: `${shown.root}/${row.path}` })
+    return follow($, say, { view: 'file', path: join(shown.root, row.path) })
   }
   const line = (row: TreeRow) => {
     const dim = row.isIgnored ? { dimColor: true as const } : {}
@@ -38,7 +40,7 @@ export async function drawTree($: Api, e: RenderInput<'Pane'>, say: Messages, sh
       <Button key={`tree:${row.path}`} plain {...dim} onPress={() => press(row)}>
         <Text dimColor>{row.prefix}</Text>
         <Text {...dim} {...(row.kind === 'dir' ? { color: 'suggestion' } : {})} {...(isChosen ? { weight: 'bold' as const } : {})}>
-          {`${row.name}${row.kind === 'dir' ? '/' : ''}`}
+          {`${visible(row.name)}${row.kind === 'dir' ? '/' : ''}`}
         </Text>
         {row.badge ? <Text color={BADGE_COLORS[row.badge] ?? 'inactive'}>{` ${row.badge}`}</Text> : null}
       </Button>
@@ -49,7 +51,7 @@ export async function drawTree($: Api, e: RenderInput<'Pane'>, say: Messages, sh
     <Box flexDirection="column" gap={1}>
       <Box key="header">
         <Text wrap="truncate-start">
-          <Text weight="bold">{shown.label}</Text>
+          <Text weight="bold">{visible(shown.label)}</Text>
           {shown.branch ? <Text dimColor>{` · ${shown.branch}`}</Text> : null}
           {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}
         </Text>

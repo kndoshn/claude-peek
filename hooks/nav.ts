@@ -8,6 +8,7 @@ import type { Location, Nav, ViewName } from '../types'
 import { where } from './find'
 import type { Kind } from './find'
 import type { Messages } from './messages'
+import { visible } from './pure/terminal'
 import { commandLocation, loadCommand } from './views/command'
 import { fileLocation, loadFile } from './views/file'
 import { gitLocation, loadGit } from './views/git'
@@ -80,7 +81,8 @@ async function openPane($: Api, opened: Exclude<Opened, { error: string }>): Pro
   const backgroundColor = await background($)
   await $.ui.open({
     id: PANE,
-    title: opened.title,
+    // A file's or a folder's name may hold a control character, which a title refuses.
+    title: visible(opened.title),
     // Escape closes it, from the pane or an idle, empty prompt.
     closeOnEscape: true,
     // Docked beside the transcript: a width to read prose and tables in (the engine caps it

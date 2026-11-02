@@ -10,7 +10,7 @@ import type { Messages } from '../messages'
 import type { Opened } from '../nav'
 import { statusBadges } from '../pure/git'
 import { fenced } from '../pure/markdown'
-import { basename, describe, fromHome } from '../pure/paths'
+import { basename, describe, fromHome, join } from '../pure/paths'
 import type { Where } from '../pure/paths'
 import { locate } from '../pure/quote'
 import { sortEntries, treeRows, treeText } from '../pure/tree'
@@ -51,7 +51,7 @@ async function linkedKind($: Api, path: string): Promise<TreeEntry['kind']> {
 async function listDir($: Api, path: string): Promise<TreeEntry[] | undefined> {
   try {
     const entries = await $.fs.list(path)
-    const kinds = await Promise.all(entries.map(entry => (entry.isLink ? linkedKind($, `${path}/${entry.name}`) : entry.kind)))
+    const kinds = await Promise.all(entries.map(entry => (entry.isLink ? linkedKind($, join(path, entry.name)) : entry.kind)))
     return sortEntries(entries.map((entry, i) => ({ name: entry.name, kind: kinds[i] ?? entry.kind, ...(entry.isLink ? { isLink: true } : {}) })))
   } catch {
     return undefined
@@ -79,17 +79,23 @@ async function gitInfo($: Api, root: string): Promise<{ branch?: string; badges:
   }
 }
 
+// A folder's label from the working directory, ending in a slash: ./ for the working directory
+// itself, / for the top.
+function folderLabel(at: Where, path: string): string {
+  if (path === at.cwd) return './'
+  return path === '/' ? '/' : `${describe(at, path).label}/`
+}
+
 // How a folder is labelled: from the home for the header (as pwd would print it), from the
 // working directory for a quote's heading and a mention.
 function labels(at: Where, root: string): Pick<TreeState, 'label' | 'heading' | 'name'> {
-  const heading = root === at.cwd ? './' : `${describe(at, root).label}/`
-  return { label: fromHome(at.home, root), heading, name: `${basename(root) || '/'}/` }
+  return { label: fromHome(at.home, root), heading: folderLabel(at, root), name: root === '/' ? '/' : `${basename(root)}/` }
 }
 
 // The entries of each of `folders` under `root`, listed side by side; a folder that cannot be
 // listed is left out.
 async function listAll($: Api, root: string, folders: readonly string[]): Promise<TreeState['listings']> {
-  const entries = await Promise.all(folders.map(folder => listDir($, `${root}/${folder}`)))
+  const entries = await Promise.all(folders.map(folder => listDir($, join(root, folder))))
   const listings: TreeState['listings'] = {}
   folders.forEach((folder, i) => {
     const listed = entries[i]
@@ -155,7 +161,7 @@ export async function toggleFolder($: Api, path: string): Promise<void> {
   const shown = await read($, tree)
   if (!shown) return
   const isOpen = shown.expanded.includes(path)
-  const entries = isOpen || shown.listings[path] ? undefined : await listDir($, `${shown.root}/${path}`)
+  const entries = isOpen || shown.listings[path] ? undefined : await listDir($, join(shown.root, path))
   await update($, tree, current => {
     if (!current || current.root !== shown.root) return current
     return {
@@ -204,7 +210,5 @@ export async function treeMention($: Api): Promise<string | undefined> {
   const shown = await read($, tree)
   if (!shown) return undefined
   if (!shown.selected) return shown.heading
-  const at = await where($)
-  const path = `${shown.root}/${shown.selected}`
-  return path === at.cwd ? './' : `${describe(at, path).label}/`
+  return folderLabel(await where($), join(shown.root, shown.selected))
 }

@@ -7,6 +7,8 @@ import type { GitState } from '../../types'
 import type { Messages } from '../messages'
 import { follow } from '../nav'
 import { clip, DRAW_LIMIT } from '../pure/markdown'
+import { join } from '../pure/paths'
+import { visible } from '../pure/terminal'
 
 type Api = EngineInterface
 
@@ -22,6 +24,8 @@ function heading(shown: GitState, say: Messages): string {
   return [shown.label, counts ? `${branch} ${counts}` : branch, ...(s.stash ? [say.stash(s.stash)] : [])].join(' · ')
 }
 
+// What git prints is drawn through `visible`: a file's lines, a message or a name may hold a
+// control character, which a drawing refuses.
 export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, shown: GitState): Promise<RenderElement> {
   const { Box, Button, Code, Text } = $.ui.resolve(e)
 
@@ -33,19 +37,19 @@ export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, sho
         <Box key="header">
           <Text wrap="truncate-end">
             <Text color="warning">{commit.hash}</Text>
-            <Text weight="bold">{` ${commit.subject}`}</Text>
+            <Text weight="bold">{` ${visible(commit.subject)}`}</Text>
           </Text>
         </Box>
-        <Text dimColor>{`${commit.author} · ${commit.date}`}</Text>
-        {commit.body ? <Text>{commit.body}</Text> : null}
-        {commit.stat ? <Code source={commit.stat} /> : null}
+        <Text dimColor>{visible(`${commit.author} · ${commit.date}`)}</Text>
+        {commit.body ? <Text>{visible(commit.body)}</Text> : null}
+        {commit.stat ? <Code source={visible(commit.stat)} /> : null}
         {commit.files.map(file => {
-          const drawn = clip(file.hunks, Math.max(room, 0), '\n@@')
+          const drawn = clip(visible(file.hunks), Math.max(room, 0), '\n@@')
           room -= drawn.text.length
           return (
             <Box key={`file:${file.path}`} flexDirection="column">
-              <Text weight="bold">{file.path}</Text>
-              {drawn.text ? <Code source={drawn.text} format="diff" /> : <Text dimColor>{file.note || say.cut}</Text>}
+              <Text weight="bold">{visible(file.path)}</Text>
+              {drawn.text ? <Code source={drawn.text} format="diff" /> : <Text dimColor>{visible(file.note) || say.cut}</Text>}
             </Box>
           )
         })}
@@ -57,14 +61,14 @@ export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, sho
   // A path in the status opens in the file view, or in the tree when it is a folder: one git lists
   // whole (untracked), a link to one, a submodule.
   const open = async (path: string) => {
-    const at = `${shown.root}/${path.replace(/\/$/, '')}`
+    const at = join(shown.root, path.replace(/\/$/, ''))
     const isDir = (await $.fs.stat(at).catch(() => undefined))?.kind === 'dir'
     await follow($, say, isDir ? { view: 'tree', root: at } : { view: 'file', path: at })
   }
   const fileRow = (kind: 'staged' | 'unstaged' | 'untracked', path: string, mark: string) => (
     <Button key={`git-file:${kind}:${path}`} plain onPress={() => open(path)}>
       <Text color={MARK_COLORS[mark] ?? 'inactive'}>{mark}</Text>
-      <Text>{` ${path}`}</Text>
+      <Text>{` ${visible(path)}`}</Text>
     </Button>
   )
   const section = (title: string, rows: RenderElement[]) =>
@@ -80,7 +84,7 @@ export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, sho
     <Box flexDirection="column" gap={1}>
       <Box key="header">
         <Text weight="bold" wrap="truncate-start">
-          {heading(shown, say)}
+          {visible(heading(shown, say))}
         </Text>
       </Box>
       {section(say.staged(s.staged.length), s.staged.map(f => fileRow('staged', f.path, f.mark)))}
@@ -100,8 +104,8 @@ export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, sho
             >
               <Text dimColor>{line.graph}</Text>
               <Text color="warning">{` ${line.commit.hash}`}</Text>
-              {line.commit.refs ? <Text color="success">{` (${line.commit.refs})`}</Text> : null}
-              <Text>{` ${line.commit.subject}`}</Text>
+              {line.commit.refs ? <Text color="success">{` (${visible(line.commit.refs)})`}</Text> : null}
+              <Text>{` ${visible(line.commit.subject)}`}</Text>
               <Text dimColor>{` ${line.commit.age}`}</Text>
             </Button>
           ) : (

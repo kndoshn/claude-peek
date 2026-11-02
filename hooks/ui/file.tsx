@@ -8,6 +8,7 @@ import { follow } from '../nav'
 import { hunks, lines } from '../pure/diff'
 import { clip, DRAW_LIMIT, frontMatter, linkify } from '../pure/markdown'
 import { dirname } from '../pure/paths'
+import { visible } from '../pure/terminal'
 import { changesOf, LINE_KEY } from '../views/file'
 
 type Api = EngineInterface
@@ -45,52 +46,56 @@ function around(text: string, at: [number, number]): { parts: { start: number; t
 
 export async function drawFile($: Api, e: RenderInput<'Pane'>, say: Messages, shown: FileDoc): Promise<RenderElement> {
   const { Box, Code, Markdown, Text } = $.ui.resolve(e)
+  // The file as a drawing takes it: a control character shown, each line where it was; its path
+  // too, which only names the language.
+  const text = visible(shown.text)
+  const path = visible(shown.path)
 
   const notes = [say.lineCount(lines(shown.text).length)]
   let isCut = false
   let body: RenderElement
   if (shown.mode === 'changes') {
     notes.push(say.changesView)
-    const drawn = clip(hunks(changesOf(shown)), DRAW_LIMIT, '\n@@')
+    const drawn = clip(visible(hunks(changesOf(shown))), DRAW_LIMIT, '\n@@')
     isCut = drawn.isCut
     body = drawn.text ? <Code source={drawn.text} format="diff" /> : <Text dimColor>{say.noChanges}</Text>
   } else if (shown.mode === 'source') {
     if (shown.isMarkdown) notes.push(say.sourceView)
     if (shown.lines) {
       notes.push(say.atLines(shown.lines))
-      const split = around(shown.text, shown.lines)
+      const split = around(text, shown.lines)
       isCut = split.isCut
       body = (
         <Box flexDirection="column">
           {split.parts.map(part =>
             part.isMarked ? (
               <Box key={LINE_KEY} backgroundColor={MARK_BACKGROUND}>
-                <Code source={part.text} path={shown.path} startLine={part.start} />
+                <Code source={part.text} path={path} startLine={part.start} />
               </Box>
             ) : (
-              <Code source={part.text} path={shown.path} startLine={part.start} />
+              <Code source={part.text} path={path} startLine={part.start} />
             ),
           )}
         </Box>
       )
     } else {
-      const drawn = clip(shown.text, DRAW_LIMIT)
+      const drawn = clip(text, DRAW_LIMIT)
       isCut = drawn.isCut
-      body = <Code source={drawn.text} path={shown.path} startLine={1} />
+      body = <Code source={drawn.text} path={path} startLine={1} />
     }
   } else {
-    const drawn = clip(shown.text, DRAW_LIMIT)
+    const drawn = clip(text, DRAW_LIMIT)
     isCut = drawn.isCut
-    const { text, links } = linkify(frontMatter(drawn.text), dirname(shown.path))
+    const { text: markdown, links } = linkify(frontMatter(drawn.text), dirname(shown.path))
     const pressable = [...links.keys()].slice(0, MAX_LINKS)
     const press = (link: { href: string }) => {
       const path = links.get(link.href)
       if (path) return follow($, say, { view: 'file', path })
     }
     body = pressable.length ? (
-      <Markdown key="doc" text={text} pressableLinks={pressable} onLinkPress={press} />
+      <Markdown key="doc" text={markdown} pressableLinks={pressable} onLinkPress={press} />
     ) : (
-      <Markdown key="doc" text={text} />
+      <Markdown key="doc" text={markdown} />
     )
   }
 
@@ -98,7 +103,7 @@ export async function drawFile($: Api, e: RenderInput<'Pane'>, say: Messages, sh
     <Box flexDirection="column" gap={1}>
       <Box key="header">
         <Text wrap="truncate-start">
-          <Text weight="bold">{shown.label}</Text>
+          <Text weight="bold">{visible(shown.label)}</Text>
           <Text dimColor>{notes.map(note => ` · ${note}`).join('')}</Text>
           {shown.isDeleted && <Text color="error">{` · ${say.deleted}`}</Text>}
           {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}

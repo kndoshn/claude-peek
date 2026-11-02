@@ -138,6 +138,35 @@ test('a commit opens its details and diff, the band puts it in the prompt, and B
   expect(await button($, 'mention')).toBeUndefined()
 })
 
+test('control characters in what git prints show as their pictures, and a path holding one still opens', async ($, on) => {
+  const r = engine(on, { '/proj/Icon\r': '' })
+  repository(r, ['# branch.oid 1', '# branch.head main', '? Icon\r', ''].join('\0'))
+  r.commands['git log --graph --format=%x1f%h%x1f%D%x1f%s%x1f%ar -n 40 --color=never'] = {
+    exitCode: 0,
+    stdout: '*\u001fabc1234\u001f\u001fColour \u001b[1mbold\u001f1 hour ago\n',
+  }
+  r.commands['git show -s --format=%h%x1f%an%x1f%ad%x1f%s%x1f%b --date=format:%Y-%m-%d %H:%M abc1234'] = {
+    exitCode: 0,
+    stdout: 'abc1234\u001fKen\u001f2026-11-01 10:00\u001fColour \u001b[1mbold\u001fA bell\u0007 rang.\n',
+  }
+  r.commands['git show --format= --patch --no-color --no-ext-diff --diff-merges=first-parent abc1234'] = {
+    exitCode: 0,
+    stdout: ['diff --git a/log.txt b/log.txt', '--- a/log.txt', '+++ b/log.txt', '@@ -1 +1 @@', '-\u001b[32mok', '+\u001b[31mfail', ''].join('\n'),
+  }
+  await peek($, 'git')
+
+  expect(await texts($, 'Button')).toEqual(['? Icon␍', '* abc1234 Colour ␛[1mbold 1 hour ago'])
+  await pressPane($, 'git-file:untracked:Icon\r')
+  expect(r.toasts).toEqual([])
+  expect(r.opened.at(-1)).toBe('Icon␍')
+
+  await press($, 'back')
+  await pressPane($, 'commit:abc1234')
+  expect((await pane($)).header).toBe('abc1234 Colour ␛[1mbold')
+  expect(await texts($, 'Text')).toContain('A bell␇ rang.')
+  expect((await pane($)).codes.map(code => code.source)).toContain('@@ -1 +1 @@\n-␛[32mok\n+␛[31mfail\n')
+})
+
 test('a selection is quoted under what it came from: the status, the history or a commit', async ($, on) => {
   const r = engine(on, {})
   repository(r)

@@ -64,9 +64,10 @@ export function linkify(markdown: string, dir: string): { text: string; links: M
   return { text: out.join('\n'), links }
 }
 
-// YAML front matter at the top drawn as a YAML code block rather than a rule and a paragraph.
+// YAML front matter at the top (after a byte order mark, if any) drawn as a YAML code block rather
+// than a rule and a paragraph.
 export function frontMatter(markdown: string): string {
-  const found = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(markdown)
+  const found = /^\ufeff?---\n([\s\S]*?)\n---(?:\n|$)/.exec(markdown)
   if (!found) return markdown
   return `\`\`\`yaml\n${found[1]}\n\`\`\`\n${markdown.slice(found[0].length)}`
 }
