@@ -1,6 +1,9 @@
 // Quoting a selection: finding the source lines a rendered or numbered selection came from and
 // writing it as a quote headed by its file and lines. Pure.
 
+// A selection to quote, and the heading that says where it came from.
+export type Quoted = { head: string; text: string }
+
 // The selected text as Markdown quote lines.
 export function quote(text: string): string {
   return text

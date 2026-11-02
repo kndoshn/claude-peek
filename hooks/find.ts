@@ -56,7 +56,8 @@ export async function existing($: Api, at: Where, messages: readonly SessionMess
   return paths.filter((_, i) => found[i])
 }
 
-type Listing = { named: string[]; files: string[]; repos: string[] }
+// What was listed, and the labels made of it for each kind, which typing reuses with it.
+type Listing = { named: string[]; files: string[]; repos: string[]; labels: Partial<Record<Kind, string[]>> }
 
 // What completion last listed, reused for LIST_TTL_MS.
 let listed: (Listing & { cwd: string; at: number }) | undefined
@@ -87,8 +88,9 @@ async function listings($: Api, at: Where, fresh: boolean): Promise<Listing> {
   const time = await now($)
   if (!fresh && listed?.cwd === at.cwd && time !== undefined && time - listed.at < LIST_TTL_MS) return listed
   const [named, files, repos] = await Promise.all([existing($, at, await recentMessages($), 'place'), projectFiles($, at.cwd), ghqRepos($)])
-  if (time !== undefined) listed = { cwd: at.cwd, at: time, named, files, repos }
-  return { named, files, repos }
+  const listing: Listing = { named, files, repos, labels: {} }
+  if (time !== undefined) listed = Object.assign(listing, { cwd: at.cwd, at: time })
+  return listing
 }
 
 // The folders the files are in, each with a closing slash.
@@ -102,12 +104,18 @@ function folders(files: readonly string[]): string[] {
 }
 
 // The labels to choose from: the files the conversation named, then the project's files; for a
-// place also the project's folders and the repositories of ghq, each with a closing slash.
+// place also the project's folders and the repositories of ghq, each with a closing slash. Made
+// once a listing, as a large project's take a while.
 export async function candidates($: Api, at: Where, kind: Kind, fresh: boolean): Promise<string[]> {
-  const { named, files, repos } = await listings($, at, fresh)
+  const listing = await listings($, at, fresh)
+  const made = listing.labels[kind]
+  if (made) return made
+  const { named, files, repos } = listing
   const conversation = named.filter(path => accepts(kind, path)).map(path => describe(at, path).label)
   const places = kind === 'place' ? [...folders(files), ...repos.map(repo => `${describe(at, repo).label}/`)] : []
-  return [...new Set([...conversation, ...files.filter(path => accepts(kind, path)), ...places])]
+  const labels = [...new Set([...conversation, ...files.filter(path => accepts(kind, path)), ...places])]
+  listing.labels[kind] = labels
+  return labels
 }
 
 // The place `text` means: the path itself when it is there (a folder only for a place), else the

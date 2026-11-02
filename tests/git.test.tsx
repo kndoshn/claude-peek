@@ -151,7 +151,19 @@ test('control characters in what git prints show as their pictures, and a path h
   }
   r.commands['git show --format= --patch --no-color --no-ext-diff --diff-merges=first-parent abc1234'] = {
     exitCode: 0,
-    stdout: ['diff --git a/log.txt b/log.txt', '--- a/log.txt', '+++ b/log.txt', '@@ -1 +1 @@', '-\u001b[32mok', '+\u001b[31mfail', ''].join('\n'),
+    stdout: [
+      'diff --git a/log.txt b/log.txt',
+      '--- a/log.txt',
+      '+++ b/log.txt',
+      '@@ -1 +1 @@',
+      '-\u001b[32mok',
+      '+\u001b[31mfail',
+      // git quotes a path that holds a control character, escaped.
+      'diff --git "a/Icon\\r" "b/Icon\\r"',
+      'new file mode 100644',
+      'index 0000000..e69de29',
+      '',
+    ].join('\n'),
   }
   await peek($, 'git')
 
@@ -165,6 +177,8 @@ test('control characters in what git prints show as their pictures, and a path h
   expect((await pane($)).header).toBe('abc1234 Colour ␛[1mbold')
   expect(await texts($, 'Text')).toContain('A bell␇ rang.')
   expect((await pane($)).codes.map(code => code.source)).toContain('@@ -1 +1 @@\n-␛[32mok\n+␛[31mfail\n')
+  // A path git quoted reads as the status shows it.
+  expect(await texts($, 'Text')).toContain('Icon␍')
 })
 
 test('a selection is quoted under what it came from: the status, the history or a commit', async ($, on) => {

@@ -11,6 +11,7 @@ import type { Opened } from '../nav'
 import { logLineText, parseLog, parseStatus, splitPatch } from '../pure/git'
 import { fromHome } from '../pure/paths'
 import { locate } from '../pure/quote'
+import type { Quoted } from '../pure/quote'
 import { now, rereads, runGit } from '../run'
 
 type Api = EngineInterface
@@ -23,7 +24,7 @@ const LOG = ['log', '--graph', '--format=%x1f%h%x1f%D%x1f%s%x1f%ar', '-n', Strin
 // Read and written only in this file (see views/file.ts).
 const git = atom({ plugin: 'peek', key: 'git' } as const, null, { shape: 'git-1' })
 
-// Git is read again every 5 seconds while shown.
+// Git is checked every 5 seconds while shown, and read again when it moved.
 const schedule = rereads(5000)
 // The status the last read found, which tells on a timer whether anything moved.
 let lastStatus: string | undefined
@@ -45,33 +46,34 @@ export async function shownGit($: Api): Promise<GitState | null> {
 }
 
 // A commit's details, its changes by file in numbers, and its diff by file (a merge's against its
-// first parent).
-async function readCommit($: Api, root: string, hash: string): Promise<CommitDetails | undefined> {
+// first parent), read from `cwd` in its repository.
+async function readCommit($: Api, cwd: string, hash: string): Promise<CommitDetails | undefined> {
   const [head, stat = '', patch = ''] = await Promise.all([
-    runGit($, ['show', '-s', '--format=%h%x1f%an%x1f%ad%x1f%s%x1f%b', '--date=format:%Y-%m-%d %H:%M', hash], root),
-    runGit($, ['show', '--format=', '--stat=120', '--no-color', '--diff-merges=first-parent', hash], root),
-    runGit($, ['show', '--format=', '--patch', '--no-color', '--no-ext-diff', '--diff-merges=first-parent', hash], root),
+    runGit($, ['show', '-s', '--format=%h%x1f%an%x1f%ad%x1f%s%x1f%b', '--date=format:%Y-%m-%d %H:%M', hash], cwd),
+    runGit($, ['show', '--format=', '--stat=120', '--no-color', '--diff-merges=first-parent', hash], cwd),
+    runGit($, ['show', '--format=', '--patch', '--no-color', '--no-ext-diff', '--diff-merges=first-parent', hash], cwd),
   ])
   if (head === undefined) return undefined
   const [short = hash, author = '', date = '', subject = '', body = ''] = head.replace(/\n+$/, '').split('\u001f')
   return { hash: short, author, date, subject, body: body.trim(), stat, files: splitPatch(patch) }
 }
 
-// Reads the repository the working directory is in: its status and history, and `commit`'s
-// details when given, side by side. A commit already shown is kept, as a commit never changes;
-// what reads as it was shown is not written, so the pane is not drawn again for nothing.
+// Reads the repository the working directory is in: its top folder, status and history, and
+// `commit`'s details when given, side by side, as git answers from anywhere in the repository
+// with paths from its top. A commit already shown is kept, as a commit never changes; what reads
+// as it was shown is not written, so the pane is not drawn again for nothing.
 export async function loadGit($: Api, say: Messages, commit?: string): Promise<Opened> {
   const at = await where($)
-  const root = (await runGit($, ['rev-parse', '--show-toplevel'], at.cwd))?.trim()
-  if (!root) return { error: say.notRepo }
   const current = await read($, git)
-  const held = commit && current?.root === root && current.commit?.hash === commit ? current.commit : undefined
-  const [status, log, details] = await Promise.all([
-    runGit($, STATUS, root),
-    runGit($, LOG, root),
-    held ?? (commit ? readCommit($, root, commit) : undefined),
+  const held = commit && current?.commit?.hash === commit ? current.commit : undefined
+  const [top, status, log, details] = await Promise.all([
+    runGit($, ['rev-parse', '--show-toplevel'], at.cwd),
+    runGit($, STATUS, at.cwd),
+    runGit($, LOG, at.cwd),
+    held ?? (commit ? readCommit($, at.cwd, commit) : undefined),
   ])
-  if (status === undefined) return { error: say.notRepo }
+  const root = top?.trim()
+  if (!root || status === undefined) return { error: say.notRepo }
   if (commit && !details) return { error: say.noCommit(commit) }
   const state: GitState = {
     root,
@@ -104,17 +106,11 @@ export async function refreshGit($: Api, say: Messages): Promise<void> {
 // Reads Git again when it is due: in full when something may have changed it; else its status,
 // and the rest only when the status moved.
 export async function tickGit($: Api, say: Messages): Promise<void> {
-  const at = await now($)
-  if (!schedule.isDue(at)) return
-  await schedule.run(async wasStale => {
+  const moved = async () => {
     const shown = await read($, git)
-    if (!shown) return
-    if (!wasStale && lastStatus !== undefined && (await runGit($, STATUS, shown.root)) === lastStatus) {
-      schedule.done(at)
-      return
-    }
-    await reload($, say)
-  })
+    return shown !== null && (lastStatus === undefined || (await runGit($, STATUS, shown.root)) !== lastStatus)
+  }
+  await schedule.tick(await now($), moved, () => reload($, say))
 }
 
 // Where the Git view is, for Back.
@@ -143,7 +139,7 @@ function commitText(commit: CommitDetails): string {
 
 // A selection from the Git view, headed by what it came from: the commit opened, the status or the
 // history; undefined when it is in none.
-export async function gitQuote($: Api, selected: string): Promise<{ head: string; text: string } | undefined> {
+export async function gitQuote($: Api, selected: string): Promise<Quoted | undefined> {
   const shown = await read($, git)
   if (!shown) return undefined
   if (shown.commit) return locate(commitText(shown.commit), selected) ? { head: `git show ${shown.commit.hash}`, text: selected } : undefined

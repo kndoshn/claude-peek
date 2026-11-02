@@ -11,6 +11,7 @@ import type { Opened } from '../nav'
 import { lines } from '../pure/diff'
 import { fenced } from '../pure/markdown'
 import { locate } from '../pure/quote'
+import type { Quoted } from '../pure/quote'
 import { clean, dropShellNoise } from '../pure/terminal'
 import { now } from '../run'
 
@@ -108,7 +109,7 @@ export async function commandLocation($: Api): Promise<Location | undefined> {
 }
 
 // A selection from the output, headed by the command; undefined when it is not in the output.
-export async function commandQuote($: Api, selected: string): Promise<{ head: string; text: string } | undefined> {
+export async function commandQuote($: Api, selected: string): Promise<Quoted | undefined> {
   const shown = await read($, command)
   if (!shown || !locate(`${shown.stdout}\n${shown.stderr}`, selected)) return undefined
   return { head: `$ ${shown.command}`, text: selected }

@@ -13,6 +13,7 @@ import { diff, lines } from '../pure/diff'
 import type { Change } from '../pure/diff'
 import { basename, describe, MARKDOWN } from '../pure/paths'
 import { cite, locate, ungutter } from '../pure/quote'
+import type { Quoted } from '../pure/quote'
 
 type Api = EngineInterface
 
@@ -151,7 +152,7 @@ export function changesOf(shown: FileDoc): Change[] {
 
 // A selection from the file view, headed by the file and its lines: in the source view by the
 // line numbers it carries, else by finding it in the file; by the file alone when not found.
-export async function fileQuote($: Api, selected: string): Promise<{ head: string; text: string } | undefined> {
+export async function fileQuote($: Api, selected: string): Promise<Quoted | undefined> {
   const shown = await read($, file)
   if (!shown) return undefined
   const numbered = shown.mode === 'source' ? ungutter(shown.text, selected) : undefined

@@ -47,8 +47,6 @@ async function load($: Api, say: Messages, to: Location, kind: Kind): Promise<Op
       return loadTree($, say, to.root)
     case 'git':
       return loadGit($, say, to.commit)
-    default:
-      return { error: say.emptyPane }
   }
 }
 
@@ -63,8 +61,6 @@ async function here($: Api, view: ViewName): Promise<Location | undefined> {
       return treeLocation($)
     case 'git':
       return gitLocation($)
-    default:
-      return undefined
   }
 }
 

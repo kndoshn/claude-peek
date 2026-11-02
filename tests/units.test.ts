@@ -215,8 +215,32 @@ test('a fence is longer than any run of backticks inside it', () => {
 })
 
 test('git status marks files and the folders above them, within the folder shown', () => {
-  const output = ' M src/a.ts\0A  src/new.ts\0 D gone.md\0R  src/b.ts\0src/old.ts\0?? scratch/\0?? docs/x.md\0'
-  expect(statusBadges(output, '')).toEqual({ 'src/a.ts': 'M', src: '•', 'src/new.ts': 'A', 'gone.md': 'D', 'src/b.ts': 'R', scratch: '?', 'docs/x.md': '?', docs: '•' })
+  const output = [
+    '# branch.oid 1111',
+    '# branch.head main',
+    '1 .M N... 100644 100644 100644 a a src/a.ts',
+    '1 A. N... 000000 100644 100644 0 b src/new.ts',
+    '1 .D N... 100644 100644 000000 a a gone.md',
+    '2 R. N... 100644 100644 100644 a a R100 src/b.ts',
+    'src/old.ts',
+    'u UU N... 100644 100644 100644 100644 a b c both.ts',
+    'u AA N... 000000 100644 100644 100644 0 b c added.ts',
+    '? scratch/',
+    '? docs/x.md',
+    '',
+  ].join('\0')
+  expect(statusBadges(output, '')).toEqual({
+    'src/a.ts': 'M',
+    src: '•',
+    'src/new.ts': 'A',
+    'gone.md': 'D',
+    'src/b.ts': 'R',
+    'both.ts': 'M',
+    'added.ts': 'A',
+    scratch: '?',
+    'docs/x.md': '?',
+    docs: '•',
+  })
   expect(statusBadges(output, 'src')).toEqual({ 'a.ts': 'M', 'new.ts': 'A', 'b.ts': 'R' })
 })
 
@@ -312,8 +336,7 @@ test('a patch splits by file, a binary or mode change keeping what git says', ()
   ])
 })
 
-// A control character stays escaped, as a drawing refuses it.
-test('a path git quotes (a quote, a backslash or a control character in it) reads as written, control characters escaped', () => {
+test('a path git quotes (a quote, a backslash or a control character in it) reads as it is', () => {
   const patch = [
     'diff --git "a/say \\"hi\\".md" "b/say \\"hi\\".md"',
     'new file mode 100644',
@@ -335,5 +358,5 @@ test('a path git quotes (a quote, a backslash or a control character in it) read
     'Binary files a/my img.png and b/my img.png differ',
     '',
   ].join('\n')
-  expect(splitPatch(patch).map(file => file.path)).toEqual(['say "hi".md', 'back\\slash\\ttab.md', 'bell\\007.bin', 'my img.png'])
+  expect(splitPatch(patch).map(file => file.path)).toEqual(['say "hi".md', 'back\\slash\ttab.md', 'bell\u0007.bin', 'my img.png'])
 })

@@ -6,6 +6,7 @@ import type { ViewName } from '../types'
 import type { Messages } from './messages'
 import { navState } from './nav'
 import { quote } from './pure/quote'
+import type { Quoted } from './pure/quote'
 import { commandBlock, commandQuote } from './views/command'
 import { fileMention, fileQuote } from './views/file'
 import { gitMention, gitQuote } from './views/git'
@@ -29,7 +30,7 @@ async function appendWord($: Api, word: string): Promise<void> {
 
 // Where `selected` came from in `view`, as a heading and the text to quote; undefined when it is
 // not in the view.
-async function quoteFrom($: Api, say: Messages, view: ViewName, selected: string): Promise<{ head: string; text: string } | undefined> {
+async function quoteFrom($: Api, say: Messages, view: ViewName, selected: string): Promise<Quoted | undefined> {
   switch (view) {
     case 'file':
       return fileQuote($, selected)

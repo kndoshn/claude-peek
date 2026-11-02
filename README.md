@@ -69,8 +69,8 @@ in the file view (**← Back** returns to the tree). A folder of more than 100 e
 first 100 and a row that shows the rest. Files changed in git are marked `M`, `A`, `D`, `R` or
 `?` (untracked), and folders that hold them `•`; what git ignores is dimmed and stays closed at
 first. `.git` is left out. A symbolic link shows as what it leads to, and a linked folder opens
-when clicked. The tree is read again every 5 seconds while shown, and when Claude runs a command
-or edits a file.
+when clicked. While shown, git's status and the folders open are checked every 5 seconds, and
+the tree is read again when either moved or Claude ran a command or edited a file.
 
 `/peek git` shows the repository the working directory is in: its branch with how far it is
 ahead of and behind its upstream, the stash, the files staged, not staged and untracked (click one

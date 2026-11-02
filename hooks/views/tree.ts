@@ -8,11 +8,12 @@ import type { Location, TreeEntry, TreeState } from '../../types'
 import { where } from '../find'
 import type { Messages } from '../messages'
 import type { Opened } from '../nav'
-import { statusBadges } from '../pure/git'
+import { parseStatus, statusBadges } from '../pure/git'
 import { fenced } from '../pure/markdown'
 import { basename, describe, fromHome, join } from '../pure/paths'
 import type { Where } from '../pure/paths'
 import { locate } from '../pure/quote'
+import type { Quoted } from '../pure/quote'
 import { sortEntries, treeRows, treeText } from '../pure/tree'
 import { now, rereads, runGit } from '../run'
 
@@ -20,16 +21,23 @@ type Api = EngineInterface
 
 // How many rows the folders opened at first may add up to.
 const FIRST_ROWS = 200
+// The status of the folder shown and its branch (what git ignores is left out of it), without
+// counting how far the branch is from its upstream, which the tree does not show.
+const STATUS = ['status', '--porcelain=v2', '--branch', '--no-ahead-behind', '-z', '--untracked-files=normal', '--', '.']
+const IGNORED = ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']
 
 // Read and written only in this file (see views/file.ts).
 const tree = atom({ plugin: 'peek', key: 'tree' } as const, null, { shape: 'tree-1' })
 
-// The tree is read again every 5 seconds while shown.
+// The tree is checked every 5 seconds while shown, and read again when it moved.
 const schedule = rereads(5000)
+// The status the last read found, which tells on a timer whether git's marks moved.
+let lastStatus: string | undefined
 
 // Forgets what an earlier load of the module was doing.
 export function resetTree(): void {
   schedule.reset()
+  lastStatus = undefined
 }
 
 // Something may have changed the files (a turn ended, Claude ran a command or edited a file).
@@ -59,21 +67,22 @@ async function listDir($: Api, path: string): Promise<TreeEntry[] | undefined> {
 }
 
 // The branch, Git's marks and what git ignores, when `root` is in a repository, read side by
-// side. git names the folder's place in the repository itself, so a path that reached it through
-// a link still finds its marks, and it does before the first commit too. A detached head has no
-// branch (`branch --show-current`, git 2.22).
-async function gitInfo($: Api, root: string): Promise<{ branch?: string; badges: Record<string, string>; ignored: string[] }> {
-  const [place, branch, status, ignored] = await Promise.all([
+// side, with the status as git printed it. git names the folder's place in the repository
+// itself, so a path that reached it through a link still finds its marks, and it does before the
+// first commit too. A detached head has no branch.
+async function gitInfo($: Api, root: string): Promise<{ status?: string; branch?: string; badges: Record<string, string>; ignored: string[] }> {
+  const [place, status, ignored] = await Promise.all([
     runGit($, ['rev-parse', '--show-prefix'], root),
-    runGit($, ['branch', '--show-current'], root),
-    runGit($, ['status', '--porcelain=v1', '-z', '--untracked-files=normal'], root),
-    runGit($, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], root),
+    runGit($, STATUS, root),
+    runGit($, IGNORED, root),
   ])
-  if (place === undefined) return { badges: {}, ignored: [] }
+  const printed = status === undefined ? {} : { status }
+  if (place === undefined) return { ...printed, badges: {}, ignored: [] }
   const prefix = place.replace(/\n$/, '').replace(/\/$/, '')
-  const name = branch?.trim()
+  const branch = status === undefined ? null : parseStatus(status).branch
   return {
-    ...(name ? { branch: name } : {}),
+    ...printed,
+    ...(branch ? { branch } : {}),
     badges: status === undefined ? {} : statusBadges(status, prefix),
     ignored: ignored === undefined ? [] : ignored.split('\0').filter(Boolean),
   }
@@ -92,10 +101,10 @@ function labels(at: Where, root: string): Pick<TreeState, 'label' | 'heading' | 
   return { label: fromHome(at.home, root), heading: folderLabel(at, root), name: root === '/' ? '/' : `${basename(root)}/` }
 }
 
-// The entries of each of `folders` under `root`, listed side by side; a folder that cannot be
-// listed is left out.
+// The entries of each of `folders` under `root` ('' for the root itself), listed side by side; a
+// folder that cannot be listed is left out.
 async function listAll($: Api, root: string, folders: readonly string[]): Promise<TreeState['listings']> {
-  const entries = await Promise.all(folders.map(folder => listDir($, join(root, folder))))
+  const entries = await Promise.all(folders.map(folder => listDir($, folder ? join(root, folder) : root)))
   const listings: TreeState['listings'] = {}
   folders.forEach((folder, i) => {
     const listed = entries[i]
@@ -113,9 +122,9 @@ export async function loadTree($: Api, say: Messages, root: string): Promise<Ope
   if (stat?.kind !== 'dir') return { error: say.notFolder(root) }
   const current = await read($, tree)
   const same = current?.root === root ? current : undefined
-  const [top, info, opened] = await Promise.all([listDir($, root), gitInfo($, root), same ? listAll($, root, same.expanded) : {}])
+  const [listings, info] = await Promise.all([listAll($, root, ['', ...(same?.expanded ?? [])]), gitInfo($, root)])
+  const top = listings['']
   if (!top) return { error: say.unreadable(root) }
-  const listings: TreeState['listings'] = { '': top, ...opened }
   const expanded = same ? [...same.expanded] : []
   if (!same) {
     const folders = top.filter(entry => entry.kind === 'dir' && !entry.isLink && !info.ignored.includes(`${entry.name}/`)).map(entry => entry.name)
@@ -142,6 +151,7 @@ export async function loadTree($: Api, say: Messages, root: string): Promise<Ope
   }
   if (JSON.stringify(state) !== JSON.stringify(current)) await update($, tree, () => state)
   schedule.done(await now($))
+  lastStatus = info.status
   return { title: state.name, label: state.heading, lines: treeRows(state).rows.length }
 }
 
@@ -151,12 +161,24 @@ async function reload($: Api, say: Messages): Promise<void> {
   if (shown) await loadTree($, say, shown.root)
 }
 
-// Reads the tree again when it is due: something may have changed it, or 5 seconds passed.
-export async function tickTree($: Api, say: Messages): Promise<void> {
-  if (schedule.isDue(await now($))) await schedule.run(() => reload($, say))
+// Whether what the tree shows may have moved since it was read: git's status, or what a folder
+// shown holds. What git ignores moves with what a folder holds, and is read with the rest.
+async function moved($: Api): Promise<boolean> {
+  const shown = await read($, tree)
+  if (!shown) return false
+  const folders = ['', ...shown.expanded]
+  const [status, listings] = await Promise.all([runGit($, STATUS, shown.root), listAll($, shown.root, folders)])
+  return status !== lastStatus || folders.some(folder => JSON.stringify(listings[folder]) !== JSON.stringify(shown.listings[folder]))
 }
 
-// Opens or closes a folder, and chooses it.
+// Reads the tree again when it is due: in full when something may have changed it; else git's
+// status and the folders shown, and the rest only when either moved.
+export async function tickTree($: Api, say: Messages): Promise<void> {
+  await schedule.tick(await now($), () => moved($), () => reload($, say))
+}
+
+// Opens or closes a folder, and chooses it. A folder opened is read in full at the next tick, as
+// what git ignores in it may have come since the last read.
 export async function toggleFolder($: Api, path: string): Promise<void> {
   const shown = await read($, tree)
   if (!shown) return
@@ -171,6 +193,7 @@ export async function toggleFolder($: Api, path: string): Promise<void> {
       selected: path,
     }
   })
+  if (!isOpen) schedule.markStale()
 }
 
 // Shows a long folder whole.
@@ -191,7 +214,7 @@ export async function shownTreeText($: Api, say: Messages): Promise<string | und
 }
 
 // A selection from the tree, headed by the folder; undefined when it is not in the tree.
-export async function treeQuote($: Api, say: Messages, selected: string): Promise<{ head: string; text: string } | undefined> {
+export async function treeQuote($: Api, say: Messages, selected: string): Promise<Quoted | undefined> {
   const shown = await read($, tree)
   const text = await shownTreeText($, say)
   if (!shown || !text || !locate(text, selected)) return undefined

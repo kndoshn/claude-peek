@@ -12,6 +12,10 @@ async function rows($: Engine): Promise<string[]> {
   return buttons.map(found => found.text)
 }
 
+// What the tree asks git: the status of the folder shown with its branch, and what git ignores.
+const STATUS = 'git status --porcelain=v2 --branch --no-ahead-behind -z --untracked-files=normal -- .'
+const IGNORED = 'git ls-files -z --others --ignored --exclude-standard --directory'
+
 const DOCS: Files = {
   '/proj/docs/a.md': 'a',
   '/proj/docs/guide/b.md': 'b',
@@ -71,12 +75,19 @@ test('in a repository the tree marks changed files and their folders, and dims w
     '/proj/README.md': 'r',
   })
   r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: '\n' }
-  r.commands['git branch --show-current'] = { exitCode: 0, stdout: 'main\n' }
-  r.commands['git status --porcelain=v1 -z --untracked-files=normal'] = {
+  r.commands[STATUS] = {
     exitCode: 0,
-    stdout: ' M docs/a.md\0?? docs/new.md\0R  docs/c.md\0docs/b.md\0',
+    stdout: [
+      '# branch.oid 1111',
+      '# branch.head main',
+      '1 .M N... 100644 100644 100644 a a docs/a.md',
+      '2 R. N... 100644 100644 100644 a a R100 docs/c.md',
+      'docs/b.md',
+      '? docs/new.md',
+      '',
+    ].join('\0'),
   }
-  r.commands['git ls-files -z --others --ignored --exclude-standard --directory'] = { exitCode: 0, stdout: 'build/\0' }
+  r.commands[IGNORED] = { exitCode: 0, stdout: 'build/\0' }
 
   await peek($)
   expect((await pane($)).header).toBe('/proj · main')
@@ -99,8 +110,7 @@ test('a folder below the top of a repository is marked by its place there, whate
   const r = engine(on, { '/proj/docs/a.md': 'a', '/proj/docs/b.md': 'b' })
   // git answers these in a repository without commits too, and from the folder's real path.
   r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: 'docs/\n' }
-  r.commands['git branch --show-current'] = { exitCode: 0, stdout: '\n' }
-  r.commands['git status --porcelain=v1 -z --untracked-files=normal'] = { exitCode: 0, stdout: '?? docs/a.md\0 M README.md\0' }
+  r.commands[STATUS] = { exitCode: 0, stdout: ['# branch.oid (initial)', '# branch.head (detached)', '? docs/a.md', '1 .M N... 100644 100644 100644 a a README.md', ''].join('\0') }
 
   await peek($, 'docs')
   expect((await pane($)).header).toBe('/proj/docs')
@@ -152,7 +162,7 @@ test('a name with control characters shows them as their pictures, and still ope
 test('inside a folder git ignores whole, everything is dimmed', async ($, on) => {
   const r = engine(on, { '/proj/build/out/a.js': 'a', '/proj/build/b.js': 'b' })
   r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: 'build/\n' }
-  r.commands['git ls-files -z --others --ignored --exclude-standard --directory'] = { exitCode: 0, stdout: './\0' }
+  r.commands[IGNORED] = { exitCode: 0, stdout: './\0' }
 
   await peek($, 'build')
   // The folder was chosen, so its smaller folders still open at first.
@@ -252,4 +262,52 @@ test('the tree is read again every 5 seconds while shown, and when a turn ends',
   await turnEnds($)
   await r.clock.advance(1000)
   expect(await rows($)).toEqual(['├── a.md', '├── b.md', '└── c.md'])
+})
+
+test("on the timer the tree reads git's status and the folders shown, and the rest only when either moved", async ($, on) => {
+  const files: Files = { '/proj/docs/a.md': 'a' }
+  const r = engine(on, files)
+  let status = ['# branch.oid 1111', '# branch.head main', ''].join('\0')
+  r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: 'docs/\n' }
+  r.commands[STATUS] = () => ({ exitCode: 0, stdout: status })
+  r.commands[IGNORED] = { exitCode: 0, stdout: '' }
+  const runs = () => ['status', 'rev-parse', 'ls-files'].map(sub => r.ran.filter(run => run.argv[1] === sub).length)
+  await start($)
+  await peek($, 'docs')
+  expect(runs()).toEqual([1, 1, 1])
+
+  // Nothing moved: the status alone is read.
+  await r.clock.advance(5000)
+  expect(runs()).toEqual([2, 1, 1])
+
+  // The status moved: all is read again.
+  status += '1 .M N... 100644 100644 100644 a a docs/a.md\0'
+  await r.clock.advance(5000)
+  expect(runs()).toEqual([4, 2, 2])
+  expect(await rows($)).toEqual(['└── a.md M'])
+
+  // A folder shown gained a file: all is read again.
+  files['/proj/docs/b.md'] = 'b'
+  await r.clock.advance(5000)
+  expect(runs()).toEqual([6, 3, 3])
+  expect(await rows($)).toEqual(['├── a.md M', '└── b.md'])
+})
+
+test('a folder opened has what git ignores in it read at the next tick', async ($, on) => {
+  const files: Files = { '/proj/big/dist/o.js': 'o' }
+  for (let i = 0; i < 250; i += 1) files[`/proj/big/f${String(i).padStart(3, '0')}.txt`] = 'x'
+  const r = engine(on, files)
+  r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: '\n' }
+  r.commands[STATUS] = { exitCode: 0, stdout: ['# branch.oid 1111', '# branch.head main', ''].join('\0') }
+  r.commands[IGNORED] = { exitCode: 0, stdout: '' }
+  await start($)
+  await peek($, '.')
+
+  // Made while the folder was closed, so the tree has not read it yet.
+  r.commands[IGNORED] = { exitCode: 0, stdout: 'big/dist/\0' }
+  await pressPane($, 'tree:big')
+  await r.clock.advance(1000)
+  const ui = await $.ui.mount(PANE)
+  expect((await ui.find({ key: 'tree:big/dist' }))?.props.dimColor).toBe(true)
+  await ui.unmount()
 })
