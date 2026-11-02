@@ -16,9 +16,14 @@ export function parseTarget(arg: string): Target {
   }
   if (text === '') return { kind: 'empty' }
   if (text === 'git') return { kind: 'git' }
+  return { kind: 'path', ...splitLines(text) }
+}
+
+// A path and the lines after it, `:12` or `:12-14`, in order; a line 0 is part of the path.
+export function splitLines(text: string): { path: string; lines?: [number, number] } {
   const at = /^(.+?):(\d+)(?:-(\d+))?$/.exec(text)
   const from = Number(at?.[2])
   const to = Number(at?.[3] ?? at?.[2])
-  if (!at?.[1] || from < 1 || to < 1) return { kind: 'path', path: text }
-  return { kind: 'path', path: at[1], lines: [Math.min(from, to), Math.max(from, to)] }
+  if (!at?.[1] || from < 1 || to < 1) return { path: text }
+  return { path: at[1], lines: [Math.min(from, to), Math.max(from, to)] }
 }

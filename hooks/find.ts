@@ -5,6 +5,8 @@ import type { EngineInterface, SessionMessage } from 'claude-code'
 
 import { absolute, closest, describe, MARKDOWN, named } from './pure/paths'
 import type { Where } from './pure/paths'
+import { cite } from './pure/quote'
+import { splitLines } from './pure/target'
 import { now, runGit } from './run'
 
 type Api = EngineInterface
@@ -40,24 +42,31 @@ export function sinceLastPrompt(messages: readonly SessionMessage[]): readonly S
   return messages
 }
 
-// The existing files of `kind` the replies among `messages` named, newest first, each once.
-export async function existing($: Api, at: Where, messages: readonly SessionMessage[], kind: Kind): Promise<string[]> {
-  const paths = [
-    ...new Set(
-      [...messages]
-        .reverse()
-        .filter(message => message.role === 'assistant')
-        .flatMap(named)
-        .filter(path => accepts(kind, path))
-        .map(path => absolute(at, path)),
-    ),
-  ]
-  const found = await Promise.all(paths.map(path => isFile($, path)))
-  return paths.filter((_, i) => found[i])
+// A file a reply named, absolute, with the lines it cited.
+export type Cited = { path: string; lines?: [number, number] }
+
+// The existing files of `kind` the replies among `messages` named, newest first, each with the
+// lines cited once: a file cited at two places is there twice, and once more if also named bare.
+export async function existing($: Api, at: Where, messages: readonly SessionMessage[], kind: Kind): Promise<Cited[]> {
+  const cited = new Map<string, Cited>()
+  for (const message of [...messages].reverse()) {
+    if (message.role !== 'assistant') continue
+    for (const token of named(message)) {
+      const { path, lines } = splitLines(token)
+      if (!accepts(kind, path)) continue
+      const file: Cited = { path: absolute(at, path), ...(lines ? { lines } : {}) }
+      const key = cite(file.path, file.lines)
+      if (!cited.has(key)) cited.set(key, file)
+    }
+  }
+  const files = [...cited.values()]
+  const paths = [...new Set(files.map(file => file.path))]
+  const found = new Set(await Promise.all(paths.map(async path => ((await isFile($, path)) ? path : undefined))))
+  return files.filter(file => found.has(file.path))
 }
 
 // What was listed, and the labels made of it for each kind, which typing reuses with it.
-type Listing = { named: string[]; files: string[]; repos: string[]; labels: Partial<Record<Kind, string[]>> }
+type Listing = { named: Cited[]; files: string[]; repos: string[]; labels: Partial<Record<Kind, string[]>> }
 
 // What completion last listed, reused for LIST_TTL_MS.
 let listed: (Listing & { cwd: string; at: number }) | undefined
@@ -104,14 +113,17 @@ function folders(files: readonly string[]): string[] {
 }
 
 // The labels to choose from: the files the conversation named, then the project's files; for a
-// place also the project's folders and the repositories of ghq, each with a closing slash. Made
-// once a listing, as a large project's take a while.
+// place the files named with the lines cited, and also the project's folders and the
+// repositories of ghq, each with a closing slash. Made once a listing, as a large project's take
+// a while.
 export async function candidates($: Api, at: Where, kind: Kind, fresh: boolean): Promise<string[]> {
   const listing = await listings($, at, fresh)
   const made = listing.labels[kind]
   if (made) return made
   const { named, files, repos } = listing
-  const conversation = named.filter(path => accepts(kind, path)).map(path => describe(at, path).label)
+  const conversation = named
+    .filter(file => accepts(kind, file.path))
+    .map(file => cite(describe(at, file.path).label, kind === 'place' ? file.lines : undefined))
   const places = kind === 'place' ? [...folders(files), ...repos.map(repo => `${describe(at, repo).label}/`)] : []
   const labels = [...new Set([...conversation, ...files.filter(path => accepts(kind, path)), ...places])]
   listing.labels[kind] = labels
@@ -119,15 +131,17 @@ export async function candidates($: Api, at: Where, kind: Kind, fresh: boolean):
 }
 
 // The place `text` means: the path itself when it is there (a folder only for a place), else the
-// best match of the candidates of `kind` for the words given.
-export async function resolvePlace($: Api, at: Where, text: string, kind: Kind): Promise<{ path: string; isDir: boolean } | undefined> {
+// best match of the candidates of `kind` for the words given, with the lines it cites.
+export async function resolvePlace($: Api, at: Where, text: string, kind: Kind): Promise<(Cited & { isDir: boolean }) | undefined> {
   const path = absolute(at, text)
   const stat = await $.fs.stat(path).catch(() => undefined)
   if (stat?.kind === 'file') return { path, isDir: false }
   if (stat?.kind === 'dir' && kind === 'place') return { path, isDir: true }
   const best = closest(text, await candidates($, at, kind, true))
   if (best === undefined) return undefined
-  return { path: absolute(at, best.replace(/\/$/, '')), isDir: best.endsWith('/') }
+  if (best.endsWith('/')) return { path: absolute(at, best.slice(0, -1)), isDir: true }
+  const { path: label, lines } = splitLines(best)
+  return { path: absolute(at, label), isDir: false, ...(lines ? { lines } : {}) }
 }
 
 async function isFile($: Api, path: string): Promise<boolean> {

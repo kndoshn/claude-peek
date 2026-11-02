@@ -170,7 +170,7 @@ export async function fileMention($: Api): Promise<string | undefined> {
 // Offers the .md the replies since the last prompt named last, unless it is the one shown.
 export async function offerNamed($: Api): Promise<void> {
   const at = await where($)
-  const [path] = await existing($, at, sinceLastPrompt(await recentMessages($)), 'markdown')
+  const path = (await existing($, at, sinceLastPrompt(await recentMessages($)), 'markdown'))[0]?.path
   const shown = await read($, file)
   const offered = path && path !== shown?.path ? describe(at, path) : null
   if (offered?.path !== (await read($, offer))?.path) await update($, offer, () => offered)

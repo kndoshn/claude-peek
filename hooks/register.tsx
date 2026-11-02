@@ -69,7 +69,9 @@ async function peekCommand($: Api, args: string): Promise<{ text: string }> {
   const place = await resolvePlace($, at, target.path, 'place')
   if (!place) return { text: say.notFound(args.trim()) }
   if (place.isDir) return report(say, await navigate($, say, { view: 'tree', root: place.path }, 'anew'))
-  return report(say, await navigate($, say, { view: 'file', path: place.path, ...(target.lines ? { lines: target.lines } : {}) }, 'anew'))
+  // Lines typed win over those the reply cited.
+  const lines = target.lines ?? place.lines
+  return report(say, await navigate($, say, { view: 'file', path: place.path, ...(lines ? { lines } : {}) }, 'anew'))
 }
 
 // /tree (with the setting on): the folder named, or without one the working directory.
@@ -91,7 +93,7 @@ async function mdCommand($: Api, args: string): Promise<{ text: string }> {
   const text = target.kind === 'path' ? target.path : args.trim()
   const path = text
     ? (await resolvePlace($, at, text, 'markdown'))?.path
-    : (await existing($, at, await recentMessages($), 'markdown'))[0]
+    : (await existing($, at, await recentMessages($), 'markdown'))[0]?.path
   if (!path) return { text: text ? say.notFound(text) : say.noneRecentMarkdown }
   const lines = target.kind === 'path' ? target.lines : undefined
   return report(say, await navigate($, say, { view: 'file', path, ...(lines ? { lines } : {}) }, 'anew', 'markdown'))

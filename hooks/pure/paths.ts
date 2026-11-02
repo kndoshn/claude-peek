@@ -68,7 +68,7 @@ export function describe(at: Where, path: string): MdFile {
 }
 
 // The files a reply named, the last named first: those its file tools took, then the paths in
-// its text, each without the lines after it. URLs are not files.
+// its text, each with the lines it cites after it (`:12`, `:12-14`). URLs are not files.
 export function named(message: SessionMessage): string[] {
   const found: string[] = []
   for (const use of message.toolUses) {
@@ -77,7 +77,7 @@ export function named(message: SessionMessage): string[] {
     if (typeof path === 'string') found.push(path)
   }
   for (const token of message.text.match(PATH_IN_TEXT) ?? []) {
-    if (!token.includes('://')) found.push(token.replace(/:\d+(?:-\d+)?$/, ''))
+    if (!token.includes('://')) found.push(token)
   }
   return found.reverse()
 }

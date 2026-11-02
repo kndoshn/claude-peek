@@ -106,7 +106,7 @@ test('a path is labelled from the working directory, else from the home, else in
   expect(describe(at, '/project/d.md').label).toBe('/project/d.md')
 })
 
-test('a reply names files by its file tools and in its text, the last named first', () => {
+test('a reply names files by its file tools and in its text, the last named first, with the lines it cites', () => {
   const message = {
     role: 'assistant' as const,
     text: 'See `docs/a.md`, src/b.ts:12-14 and (c.markdown), e.g. v1.2 at https://example.com/x.html.',
@@ -118,7 +118,7 @@ test('a reply names files by its file tools and in its text, the last named firs
   }
   // A URL and a version are not files; words that only look like one (e.g) are dropped later,
   // when they are not on disk.
-  expect(named(message)).toEqual(['e.g', 'c.markdown', 'src/b.ts', 'docs/a.md', '/p/r.json', '/p/w.md'])
+  expect(named(message)).toEqual(['e.g', 'c.markdown', 'src/b.ts:12-14', 'docs/a.md', '/p/r.json', '/p/w.md'])
 })
 
 test('ranking puts a name match before a path match before loose ones, and drops the rest', () => {

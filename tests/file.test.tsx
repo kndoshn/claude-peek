@@ -578,6 +578,26 @@ test('/md arguments complete to Markdown files, /peek arguments to every file', 
   expect(await texts('/peek ag')).toEqual(['docs/ai-agents.md', 'src/agent.ts'])
 })
 
+test('/peek completes to the lines a reply cited, the newest first, and a name opens at the first; /md leaves them out', async ($, on) => {
+  const code = Array.from({ length: 8 }, (_, i) => `line ${i + 1}`).join('\n')
+  const files = { '/proj/hooks/find.ts': code, '/proj/docs/plan.md': '# Plan' }
+  const r = engine(on, files, [assistant('See hooks/find.ts:3 and docs/plan.md:1'), assistant('The bug is at hooks/find.ts:5-6.')])
+  tracked(r, 'hooks/find.ts', 'docs/plan.md')
+
+  const result = await autocomplete($, '/peek find')
+  expect(result.suggestions.map(s => s.text)).toEqual(['hooks/find.ts:5-6', 'hooks/find.ts:3', 'hooks/find.ts'])
+  expect(result.suggestions[0]).toEqual({ text: 'hooks/find.ts:5-6', label: 'find.ts:5-6', description: 'hooks' })
+  expect((await autocomplete($, '/md plan')).suggestions.map(s => s.text)).toEqual(['docs/plan.md'])
+
+  await peek($, 'find')
+  expect((await pane($)).header).toBe('hooks/find.ts · 8 lines · lines 5-6')
+  // Lines typed win, and a path typed whole opens the file from its top.
+  await peek($, 'find:2')
+  expect((await pane($)).header).toBe('hooks/find.ts · 8 lines · line 2')
+  await peek($, 'hooks/find.ts')
+  expect((await pane($)).header).toBe('hooks/find.ts · 8 lines')
+})
+
 test('a suggestion shows the file name, and beside it the folder when there is one', async ($, on) => {
   const r = engine(on, {})
   tracked(r, 'README.md', 'docs/README.md')

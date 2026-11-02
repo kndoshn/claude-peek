@@ -72,6 +72,10 @@ the repositories of ghq. The project's files are those `git ls-files` lists (tra
 not ignored), or outside a git repository those `fd` lists. A name opens only a match that holds it
 as typed; a looser match, its letters only in order, is offered as a completion instead.
 
+When a reply cites lines, as in `hooks/find.ts:89`, `/peek` offers the file at those lines, and a
+name whose best match is one opens there. Lines you type win, and a whole path opens at the top.
+`/md` offers Markdown without lines, as it is for reading rendered.
+
 While you type, `/peek re` completes to matching files, folders and repositories, with the folder
 each is in beside it, and `/peek !g` to the commands you ran before that start so. When a reply
 names a `.md` file, the row above the prompt offers **Open docs/plan.md**; **×** dismisses it.
