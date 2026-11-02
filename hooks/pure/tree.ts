@@ -2,8 +2,8 @@
 
 import type { TreeEntry } from '../../types'
 
-// One row: an entry with the lines that lead to it, its Git mark, whether git ignores it and
-// whether it is an open folder; or the row standing for the entries a long folder holds back.
+// One row: an entry with the lines that lead to it, its Git mark and whether git ignores it; or
+// the row standing for the entries a long folder holds back.
 export type TreeRow = {
   path: string
   name: string
@@ -11,7 +11,6 @@ export type TreeRow = {
   prefix: string
   badge?: string
   isIgnored: boolean
-  isOpen?: boolean
   hidden?: number
 }
 
@@ -27,9 +26,9 @@ export type TreeInput = {
 }
 
 // How many entries of one folder show before the rest are asked for.
-export const PER_DIR = 100
+const PER_DIR = 100
 // How many rows one tree shows at most.
-export const MAX_ROWS = 1000
+const MAX_ROWS = 1000
 
 // A folder's entries as the tree lists them: folders first, then by name ignoring case, .git
 // left out.
@@ -68,7 +67,6 @@ export function treeRows(input: TreeInput): { rows: TreeRow[]; isCut: boolean } 
         prefix: `${prefix}${isLast ? '└── ' : '├── '}`,
         ...(input.badges[path] ? { badge: input.badges[path] } : {}),
         isIgnored: ignoredAt(path, entry.kind, input.ignored),
-        ...(entry.kind === 'dir' ? { isOpen } : {}),
       })
       if (isOpen) walk(path, `${prefix}${isLast ? '    ' : '│   '}`)
     }
@@ -81,7 +79,7 @@ export function treeRows(input: TreeInput): { rows: TreeRow[]; isCut: boolean } 
 }
 
 // A row as text: its lines, its name (a folder's with a slash) and its Git mark.
-export function rowText(row: TreeRow, more: (hidden: number) => string): string {
+function rowText(row: TreeRow, more: (hidden: number) => string): string {
   if (row.kind === 'more') return `${row.prefix}${more(row.hidden ?? 0)}`
   return `${row.prefix}${row.name}${row.kind === 'dir' ? '/' : ''}${row.badge ? ` ${row.badge}` : ''}`
 }

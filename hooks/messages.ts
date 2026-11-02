@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { ViewName } from '../types'
 
-export type Lang = 'en' | 'ja'
+type Lang = 'en' | 'ja'
 
 export type Messages = {
   peekCommand: string
@@ -17,7 +17,6 @@ export type Messages = {
   tooLarge: (path: string) => string
   unreadable: (path: string) => string
   noneRecentMarkdown: string
-  noneRecent: string
   notFound: (query: string) => string
   emptyPane: string
   selectFirst: string
@@ -71,7 +70,7 @@ export type Messages = {
   gitCommand: string
 }
 
-export const MESSAGES: Record<Lang, Messages> = {
+const MESSAGES: Record<Lang, Messages> = {
   en: {
     peekCommand: 'Peek at a file, a folder, Git or a command in a pane, and quote what you need',
     peekArgument: '[path[:line] | name | git | !command]',
@@ -83,7 +82,6 @@ export const MESSAGES: Record<Lang, Messages> = {
     tooLarge: path => `Too large to show (over 4 MiB): ${path}`,
     unreadable: path => `Cannot read ${path}`,
     noneRecentMarkdown: 'No .md file in the recent conversation. Name one: /md <path>',
-    noneRecent: 'No file in the recent conversation. Name one: /peek <path>',
     notFound: query => `Nothing matches "${query}". Give a path or part of a name.`,
     emptyPane: '/peek [path] shows a file here',
     selectFirst: 'Select a passage in the pane with the mouse first',
@@ -147,7 +145,6 @@ export const MESSAGES: Record<Lang, Messages> = {
     tooLarge: path => `大きすぎるので開きません（4 MiB 超）: ${path}`,
     unreadable: path => `読めません: ${path}`,
     noneRecentMarkdown: '直近の会話に .md が見つかりません。/md <path> で指定してください',
-    noneRecent: '直近の会話にファイルが見つかりません。/peek <path> で指定してください',
     notFound: query => `見つかりません: ${query}（パスか、名前の一部を指定してください）`,
     emptyPane: '/peek [path] でファイルを表示します',
     selectFirst: '引用する箇所を先にマウスで選択してください',
@@ -204,7 +201,7 @@ export const MESSAGES: Record<Lang, Messages> = {
 
 // The language a setting (`japanese`, `日本語`) or locale (`ja_JP.UTF-8`) names, if it is one
 // peek speaks.
-export function languageOf(value: string | undefined): Lang | undefined {
+function languageOf(value: string | undefined): Lang | undefined {
   const v = value?.trim() ?? ''
   if (/^(ja|japanese)(?![a-z])|^日本語/i.test(v)) return 'ja'
   if (/^(en|english)(?![a-z])/i.test(v)) return 'en'

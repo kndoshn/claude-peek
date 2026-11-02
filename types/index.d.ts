@@ -38,7 +38,6 @@ export type FileDoc = MdFile & {
 export type CommandRun = {
   command: string
   cwd: string
-  cwdLabel: string
   stdout: string
   stderr: string
   exitCode: number | null

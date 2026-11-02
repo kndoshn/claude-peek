@@ -122,7 +122,7 @@ export async function resolvePlace($: Api, at: Where, text: string, kind: Kind):
   return { path: absolute(at, best.replace(/\/$/, '')), isDir: best.endsWith('/') }
 }
 
-export async function isFile($: Api, path: string): Promise<boolean> {
+async function isFile($: Api, path: string): Promise<boolean> {
   try {
     return (await $.fs.stat(path)).kind === 'file'
   } catch {
@@ -140,7 +140,7 @@ export async function mtime($: Api, path: string): Promise<number | undefined> {
   }
 }
 
-export type Loaded = { text: string; mtimeMs: number } | { problem: 'unreadable' | 'binary' | 'large' }
+type Loaded = { text: string; mtimeMs: number } | { problem: 'unreadable' | 'binary' | 'large' }
 
 // The file's text and modification time, or why it cannot be shown: missing or unreadable,
 // binary (it holds a NUL), or over what one read takes.

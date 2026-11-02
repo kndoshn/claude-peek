@@ -73,8 +73,8 @@ to open it), and the history as `git log --graph` draws it, 40 commits. Click a 
 author, date, message, files changed and diff by file (a merge's against its first parent);
 **← Back** returns to the history. Diffs of the work in progress are left to Claude Code's own
 `/diff`. git runs without taking the index lock (`GIT_OPTIONAL_LOCKS=0`), so it does not get in
-the way of a git command of Claude's. The view is read again every 5 seconds while shown, and
-when Claude runs a command or edits a file.
+the way of a git command of Claude's. While shown, its status is checked every 5 seconds, and
+the rest is read again when the status moved or Claude ran a command or edited a file.
 
 `/peek !command` runs the command in your shell (`$SHELL`, else `/bin/sh`) as an interactive
 shell would, in the working directory, so your aliases and functions work. Its output shows in
@@ -117,7 +117,7 @@ While the pane is open, a row above the prompt has:
 - **Commit to prompt** (a commit opened in Git): appends its hash and subject. **Refresh** reads
   Git again at once.
 - **Quote output** (command): appends the whole output under the command, in a code block.
-- **Run again** (command): runs the command anew.
+- **Run again** (command): runs the command anew, in the folder it ran in.
 - **Copy** (command): puts the output on the clipboard.
 - **← Back**: returns to the file you followed a link from.
 - **Close**: closes the pane. So do the pane's close mark, and Esc while the pane has the focus or

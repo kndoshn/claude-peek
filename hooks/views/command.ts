@@ -49,17 +49,17 @@ async function remember($: Api, text: string): Promise<void> {
 }
 
 // Runs `text` in the person's shell, interactive so that their aliases and functions are there,
-// in the working directory, and keeps what it printed. PEEK=1 lets a shell's startup files turn
-// on what they keep off inside Claude Code.
-export async function runCommand($: Api, text: string): Promise<void> {
-  const at = await where($)
+// in `cwd` (the working directory unless given), and keeps what it printed. PEEK=1 lets a shell's
+// startup files turn on what they keep off inside Claude Code.
+export async function runCommand($: Api, text: string, cwd?: string): Promise<void> {
+  const dir = cwd ?? (await where($)).cwd
   const shell = (await $.env.get('SHELL').catch(() => undefined)) || '/bin/sh'
-  const base = { command: text, cwd: at.cwd, cwdLabel: at.cwd }
+  const base = { command: text, cwd: dir }
   let run: CommandRun
   const started = await now($)
   try {
     const result = await $.process.run([shell, '-ic', text], {
-      cwd: at.cwd,
+      cwd: dir,
       env: { PEEK: '1' },
       stdin: '',
       timeoutMs: timeoutSeconds * 1000,
@@ -78,10 +78,10 @@ export async function runCommand($: Api, text: string): Promise<void> {
   await remember($, text)
 }
 
-// Runs the last command again.
+// Runs the last command again, where it ran.
 export async function rerunCommand($: Api): Promise<void> {
   const shown = await read($, command)
-  if (shown) await runCommand($, shown.command)
+  if (shown) await runCommand($, shown.command, shown.cwd)
 }
 
 // What showing the command view comes to: the last command's output, or why there is none.

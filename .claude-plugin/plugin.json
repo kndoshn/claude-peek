@@ -1,15 +1,17 @@
 {
   "name": "peek",
-  "version": "0.8.0",
-  "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt",
+  "version": "0.8.1",
+  "description": "Peek at files, folders, Git and command output beside the chat in Claude Code, and quote what you need into the prompt with where it came from",
   "author": {
     "name": "kndoshn",
     "url": "https://github.com/kndoshn"
   },
   "license": "MIT",
   "keywords": [
+    "files",
+    "tree",
+    "git",
     "markdown",
-    "review",
     "pane",
     "quote",
     "mod"
@@ -19,7 +21,7 @@
     "language": {
       "type": "string",
       "title": "Language",
-      "description": "The language of md-review's messages and buttons. auto follows Claude Code's language setting, then the locale.",
+      "description": "The language of peek's messages and buttons. auto follows Claude Code's language setting, then the locale.",
       "options": [
         "auto",
         "en",

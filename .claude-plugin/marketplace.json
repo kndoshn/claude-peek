@@ -7,7 +7,7 @@
     {
       "name": "peek",
       "source": "./",
-      "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt"
+      "description": "Peek at files, folders, Git and command output beside the chat in Claude Code, and quote what you need into the prompt with where it came from"
     }
   ],
   "description": "claude-peek: peek at files, folders, Git and command output beside the chat in Claude Code, and quote what you need"

@@ -68,14 +68,16 @@ test('the time limit comes from the settings', { options: { commandTimeoutSecond
   expect(r.ran[0]?.timeoutMs).toBe(5000)
 })
 
-test('Run again runs the command anew', async ($, on) => {
+test('Run again runs the command anew, where it ran before', async ($, on) => {
   const r = engine(on, {})
   let n = 0
   r.commands['/bin/sh'] = () => ({ exitCode: 0, stdout: `run ${(n += 1)}\n` })
 
   await peek($, '!date')
+  r.cwd = '/proj/.worktrees/x'
   await press($, 'rerun')
   expect((await pane($)).code?.source).toBe('run 2\n')
+  expect(r.ran.map(run => run.cwd)).toEqual([CWD, CWD])
 })
 
 test('a selection of the output is quoted under the command; the whole output too', async ($, on) => {

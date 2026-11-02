@@ -5,8 +5,8 @@ import type { Engine } from 'claude-code/testing'
 import type { FsEntry, On, PaneOpenArgs, PromptAutocompleteInput, PromptAutocompleteResult } from 'claude-code'
 
 export const CWD = '/proj'
-export const HOME = '/home/me'
-export const PLUGIN = 'peek'
+const HOME = '/home/me'
+const PLUGIN = 'peek'
 
 export type Files = Record<string, string>
 export type Message = {
@@ -42,6 +42,8 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     copied: [] as string[],
     scrolls: [] as unknown[],
     selection: undefined as { text: string; requestId?: string } | undefined,
+    // The session's working directory, which a worktree may move.
+    cwd: CWD,
     // Whether the surface shows the pane, rather than another tab in front of it.
     isShown: true,
     // How often the conversation was read.
@@ -85,7 +87,7 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     record.copied.push(e.text)
     return { value: { isCopied: true as const } }
   })
-  on('session.cwd', () => ({ value: CWD }))
+  on('session.cwd', () => ({ value: record.cwd }))
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? HOME : record.env[e.name] }))
   on('config.list', () => ({
     value: record.config.map(row => ({
