@@ -1,10 +1,11 @@
 import { expect, test } from 'claude-code/testing'
 
 import { diff, hunks } from '../hooks/pure/diff'
-import { clip, frontMatter, linkify } from '../hooks/pure/markdown'
+import { clip, fenced, frontMatter, linkify } from '../hooks/pure/markdown'
 import { absolute, describe, dirname, named, normalize, rank } from '../hooks/pure/paths'
 import { cite, locate, quote, ungutter } from '../hooks/pure/quote'
 import { parseTarget } from '../hooks/pure/target'
+import { clean, dropShellNoise } from '../hooks/pure/terminal'
 import type { Change } from '../hooks/pure/diff'
 
 // A small deterministic generator, so a failure repeats.
@@ -172,4 +173,18 @@ test('a /peek argument is a command, git, or a path with an optional line or ran
   expect(parseTarget('src/a.ts:12')).toEqual({ kind: 'path', path: 'src/a.ts', lines: [12, 12] })
   expect(parseTarget('src/a.ts:14-12')).toEqual({ kind: 'path', path: 'src/a.ts', lines: [12, 14] })
   expect(parseTarget('src/a.ts:0')).toEqual({ kind: 'path', path: 'src/a.ts:0' })
+})
+
+test('terminal output loses escape sequences and control characters, and keeps what \r left last', () => {
+  expect(clean('\u001b[1;31mred\u001b[0m bold\u001b[K')).toBe('red bold')
+  expect(clean('\u001b]0;title\u0007after')).toBe('after')
+  expect(clean('a\r\nb\r\n')).toBe('a\nb\n')
+  expect(clean('1/3\r2/3\r3/3 done')).toBe('3/3 done')
+  expect(clean('tab\there\u0008\u0000')).toBe('tab\there')
+  expect(dropShellNoise("(eval):1: can't change option: zle\nreal error")).toBe('real error')
+})
+
+test('a fence is longer than any run of backticks inside it', () => {
+  expect(fenced('plain\n')).toBe('```\nplain\n```')
+  expect(fenced('has ```` four')).toBe('`````\nhas ```` four\n`````')
 })

@@ -1,6 +1,6 @@
 {
   "name": "peek",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt",
   "license": "MIT",
   "keywords": [
@@ -22,6 +22,12 @@
         "ja"
       ],
       "default": "auto"
+    },
+    "commandTimeoutSeconds": {
+      "type": "number",
+      "title": "Command time limit (seconds)",
+      "description": "How long /peek !command may run before it is stopped: 1 to 600.",
+      "default": 30
     }
   }
 }

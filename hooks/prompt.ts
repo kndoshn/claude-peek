@@ -5,6 +5,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Messages } from './messages'
 import { navState } from './nav'
 import { quote } from './pure/quote'
+import { commandBlock, commandQuote } from './views/command'
 import { fileMention, fileQuote } from './views/file'
 
 type Api = EngineInterface
@@ -33,7 +34,13 @@ export async function quoteSelection($: Api, say: Messages): Promise<void> {
     return
   }
   const state = await navState($)
-  const from = selected.requestId === undefined && state.view === 'file' ? await fileQuote($, selected.text) : undefined
+  const inPane = selected.requestId === undefined
+  const from =
+    inPane && state.view === 'file'
+      ? await fileQuote($, selected.text)
+      : inPane && state.view === 'command'
+        ? await commandQuote($, selected.text)
+        : undefined
   const text = from?.text ?? selected.text
   await appendBlock($, from?.head ? `${from.head}\n${quote(text)}` : quote(text))
 }
@@ -43,4 +50,11 @@ export async function mention($: Api): Promise<void> {
   const state = await navState($)
   const label = state.view === 'file' ? await fileMention($) : undefined
   if (label) await appendWord($, `@${label}`)
+}
+
+// Quotes the whole of what the view shows: a command's output under the command.
+export async function quoteAll($: Api): Promise<void> {
+  const state = await navState($)
+  const block = state.view === 'command' ? await commandBlock($) : undefined
+  if (block) await appendBlock($, block)
 }

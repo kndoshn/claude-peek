@@ -33,11 +33,24 @@ export type FileDoc = MdFile & {
   lines?: [number, number]
 }
 
+// The last command the command view ran: where, what it printed, and how it ended (its exit
+// code, or the seconds after which it was stopped).
+export type CommandRun = {
+  command: string
+  cwd: string
+  cwdLabel: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  stoppedAfter?: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     peek: {
       nav: Shaped<Nav>
       file: Shaped<FileDoc | null>
+      command: Shaped<CommandRun | null>
       // The .md the last reply named, offered in the band until opened or dismissed.
       offer: Shaped<MdFile | null>
     }

@@ -49,9 +49,10 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     git: { exitCode: 0, stdout: '' } as Run,
     fd: { exitCode: 127, stdout: '' } as Run,
     // Any other command: answered by this, else as missing.
-    commands: {} as Record<string, Run | ((argv: readonly string[]) => Run)>,
-    ran: [] as { argv: string[]; cwd?: string; env?: Record<string, string> }[],
+    commands: {} as Record<string, Run | ((argv: readonly string[]) => Run | Promise<Run>)>,
+    ran: [] as { argv: string[]; cwd?: string; env?: Record<string, string>; stdin?: string; timeoutMs?: number }[],
   }
+  mock.store(on)
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.open', (_, e) => {
     record.opened.push(e.title ?? e.id)
@@ -123,8 +124,8 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     record.toasts.push(e.text)
     return { value: undefined }
   })
-  on('process.run', (_, e) => {
-    record.ran.push({ argv: [...e.argv], cwd: e.init?.cwd, env: e.init?.env })
+  on('process.run', async (_, e) => {
+    record.ran.push({ argv: [...e.argv], cwd: e.init?.cwd, env: e.init?.env, stdin: e.init?.stdin, timeoutMs: e.init?.timeoutMs })
     const custom = record.commands[e.argv.join(' ')] ?? record.commands[e.argv[0] ?? '']
     const run =
       e.argv[0] === 'git' && e.argv[1] === 'ls-files' && !custom
@@ -132,7 +133,7 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
         : e.argv[0] === 'fd'
           ? record.fd
           : typeof custom === 'function'
-            ? custom(e.argv)
+            ? await custom(e.argv)
             : (custom ?? { exitCode: 127, stdout: '' })
     return { value: { stderr: '', ...run, isStdoutTruncated: false, isStderrTruncated: false } }
   })

@@ -39,6 +39,16 @@ export type Messages = {
   noChanges: string
   deleted: string
   cut: string
+  commandHint: string
+  exit: (code: number) => string
+  stoppedAfter: (seconds: number) => string
+  noOutput: string
+  stderr: string
+  quoteAll: string
+  rerun: string
+  copy: string
+  copied: string
+  failed: string
 }
 
 export const MESSAGES: Record<Lang, Messages> = {
@@ -75,6 +85,16 @@ export const MESSAGES: Record<Lang, Messages> = {
     noChanges: 'No changes since your last message',
     deleted: 'deleted on disk',
     cut: 'too long: cut to fit',
+    commandHint: '/peek !ls -la runs a command and shows its output here',
+    exit: code => `exit ${code}`,
+    stoppedAfter: seconds => `stopped after ${seconds} s`,
+    noOutput: 'no output',
+    stderr: 'stderr',
+    quoteAll: 'Quote output',
+    rerun: 'Run again',
+    copy: 'Copy',
+    copied: 'Copied',
+    failed: 'could not run',
   },
   ja: {
     peekCommand: 'ファイル・フォルダー・Git・コマンドの出力をパネルで覗き、必要な箇所を引用する',
@@ -109,6 +129,16 @@ export const MESSAGES: Record<Lang, Messages> = {
     noChanges: '前回の送信からの変更はありません',
     deleted: 'ディスクから削除されました',
     cut: '長いので途中まで表示',
+    commandHint: '/peek !ls -la でコマンドを実行し、出力をここに表示します',
+    exit: code => `終了コード ${code}`,
+    stoppedAfter: seconds => `${seconds} 秒で止めました`,
+    noOutput: '出力なし',
+    stderr: '標準エラー出力',
+    quoteAll: '出力を引用',
+    rerun: '再実行',
+    copy: 'コピー',
+    copied: 'コピーしました',
+    failed: '実行できませんでした',
   },
 }
 

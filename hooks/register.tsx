@@ -9,6 +9,7 @@ import { rank, suggestion } from './pure/paths'
 import { parseTarget } from './pure/target'
 import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
+import { configureCommand, recentCommands, runCommand } from './views/command'
 import { offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
 import type { Opened } from './views/file'
 
@@ -42,6 +43,10 @@ async function peekCommand($: Api, args: string): Promise<{ text: string }> {
     if (!path) return { text: say.noneRecent }
     return report(say, await navigate($, say, { view: 'file', path }, 'anew'))
   }
+  if (target.kind === 'command') {
+    await runCommand($, target.command)
+    return report(say, await navigate($, say, { view: 'command' }, 'anew'))
+  }
   if (target.kind !== 'path') return { text: say.notFound(args.trim()) }
   const path = await resolveFile($, at, target.path, 'any')
   if (!path) return { text: say.notFound(args.trim()) }
@@ -65,6 +70,7 @@ async function mdCommand($: Api, args: string): Promise<{ text: string }> {
 export const register: Register = (on, options: PluginOptions) => {
   // A load starts over: what an earlier load worked out may not hold for this one.
   configureLanguage(options.language)
+  configureCommand(options.commandTimeoutSeconds)
   resetFind()
   resetFile()
 
@@ -91,6 +97,15 @@ export const register: Register = (on, options: PluginOptions) => {
     const command = /^\/(peek|md)\s/.exec(e.text)?.[1]
     if (!command || e.start <= command.length + 1) return base
     try {
+      // The commands run before, while `!` and the command's first word are being typed.
+      if (command === 'peek' && e.token.startsWith('!') && e.text.slice(0, e.start).trim() === '/peek') {
+        const typed = e.token.slice(1)
+        const mine = (await recentCommands($))
+          .filter(run => run.startsWith(typed))
+          .slice(0, MAX_SUGGESTIONS)
+          .map(run => ({ text: `!${run}` }))
+        return { suggestions: [...base.suggestions, ...mine] }
+      }
       const kind: Kind = command === 'md' ? 'markdown' : 'any'
       const mine = rank(e.token, await candidates($, await where($), kind, false))
         .slice(0, MAX_SUGGESTIONS)

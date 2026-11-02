@@ -7,6 +7,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Location, Nav, ViewName } from '../types'
 import type { Kind } from './find'
 import type { Messages } from './messages'
+import { commandLocation, loadCommand } from './views/command'
 import { fileLocation, loadFile } from './views/file'
 import type { Opened } from './views/file'
 
@@ -31,6 +32,8 @@ async function load($: Api, say: Messages, to: Location, kind: Kind): Promise<Op
   switch (to.view) {
     case 'file':
       return loadFile($, say, to.path, to.lines, kind)
+    case 'command':
+      return loadCommand($, say)
     default:
       return { error: say.emptyPane }
   }
@@ -41,6 +44,8 @@ async function here($: Api, view: ViewName): Promise<Location | undefined> {
   switch (view) {
     case 'file':
       return fileLocation($)
+    case 'command':
+      return commandLocation($)
     default:
       return undefined
   }
@@ -123,6 +128,18 @@ export async function reopen($: Api, say: Messages): Promise<Opened | undefined>
   await update($, nav, current => ({ ...current, isOpen: true }))
   await openPane($, opened)
   return opened
+}
+
+// Shows `view` where it was, or its hint when it never showed anything; Back is left as it is.
+export async function switchView($: Api, say: Messages, view: ViewName): Promise<void> {
+  const to = await here($, view)
+  const opened = to ? await load($, say, to, 'any') : { title: say.views[view], label: say.views[view], rows: 3 }
+  if ('error' in opened) {
+    $.ui.toast(opened.error)
+    return
+  }
+  await update($, nav, current => ({ ...current, isOpen: true, view }))
+  await openPane($, opened)
 }
 
 // Whether the pane is open on `view`.

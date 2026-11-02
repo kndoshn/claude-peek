@@ -75,3 +75,10 @@ export function clip(text: string, limit: number, unit = '\n'): { text: string; 
   const end = text.lastIndexOf(unit, limit - 1)
   return { text: text.slice(0, end > 0 ? end + 1 : limit), isCut: true }
 }
+
+// `text` in a fenced code block whose fence is longer than any run of backticks inside it.
+export function fenced(text: string): string {
+  const longest = Math.max(2, ...(text.match(/`+/g) ?? []).map(run => run.length))
+  const fence = '`'.repeat(longest + 1)
+  return `${fence}\n${text.replace(/\n$/, '')}\n${fence}`
+}
