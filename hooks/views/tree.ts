@@ -69,8 +69,10 @@ async function gitInfo($: Api, root: string): Promise<{ branch?: string; badges:
   if (top?.exitCode !== 0) return { badges: {}, ignored: [] }
   const [toplevel = root, branch] = top.stdout.split('\n')
   const prefix = root === toplevel ? '' : root.slice(toplevel.length + 1)
-  const status = await run(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=normal'])
-  const ignored = await run(['git', 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'])
+  const [status, ignored] = await Promise.all([
+    run(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=normal']),
+    run(['git', 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']),
+  ])
   return {
     ...(branch ? { branch } : {}),
     badges: status?.exitCode === 0 ? statusBadges(status.stdout, prefix) : {},
@@ -87,31 +89,40 @@ function labels(at: Where, root: string): Pick<TreeState, 'label' | 'heading' | 
   return { label, heading, name: `${basename(root) || '/'}/` }
 }
 
-// Reads `root` into the tree view. The folder shown again keeps what was opened and chosen; a new
-// one opens its smaller folders, as many as fit in FIRST_ROWS.
+// The entries of each of `folders` under `root`, listed side by side; a folder that cannot be
+// listed is left out.
+async function listAll($: Api, root: string, folders: readonly string[]): Promise<TreeState['listings']> {
+  const entries = await Promise.all(folders.map(folder => listDir($, `${root}/${folder}`)))
+  const listings: TreeState['listings'] = {}
+  folders.forEach((folder, i) => {
+    const listed = entries[i]
+    if (listed) listings[folder] = listed
+  })
+  return listings
+}
+
+// Reads `root` into the tree view, its folders and git side by side. The folder shown again
+// keeps what was opened and chosen; a new one opens its smaller folders, as many as fit in
+// FIRST_ROWS. What reads as it was shown is not written, so the pane is not drawn again for
+// nothing.
 export async function loadTree($: Api, say: Messages, root: string): Promise<Opened> {
   const stat = await $.fs.stat(root).catch(() => undefined)
   if (stat?.kind !== 'dir') return { error: say.notFolder(root) }
-  const top = await listDir($, root)
-  if (!top) return { error: say.unreadable(root) }
   const current = await read($, tree)
   const same = current?.root === root ? current : undefined
-  const info = await gitInfo($, root)
-  const listings: TreeState['listings'] = { '': top }
+  const [top, info, opened] = await Promise.all([listDir($, root), gitInfo($, root), same ? listAll($, root, same.expanded) : {}])
+  if (!top) return { error: say.unreadable(root) }
+  const listings: TreeState['listings'] = { '': top, ...opened }
   const expanded = same ? [...same.expanded] : []
-  if (same) {
-    for (const folder of same.expanded) {
-      const entries = await listDir($, `${root}/${folder}`)
-      if (entries) listings[folder] = entries
-    }
-  } else {
+  if (!same) {
+    const folders = top.filter(entry => entry.kind === 'dir' && !info.ignored.includes(`${entry.name}/`)).map(entry => entry.name)
+    const children = await listAll($, root, folders)
     let rows = top.length
-    for (const entry of top) {
-      if (entry.kind !== 'dir' || info.ignored.includes(`${entry.name}/`)) continue
-      const entries = await listDir($, `${root}/${entry.name}`)
+    for (const folder of folders) {
+      const entries = children[folder]
       if (!entries || rows + entries.length > FIRST_ROWS) continue
-      expanded.push(entry.name)
-      listings[entry.name] = entries
+      expanded.push(folder)
+      listings[folder] = entries
       rows += entries.length
     }
   }
@@ -126,7 +137,7 @@ export async function loadTree($: Api, say: Messages, root: string): Promise<Ope
     badges: info.badges,
     ignored: info.ignored,
   }
-  await update($, tree, () => state)
+  if (JSON.stringify(state) !== JSON.stringify(current)) await update($, tree, () => state)
   readAt = await $.clock.now().catch(() => undefined)
   isStale = false
   return { title: state.name, label: state.heading, rows: treeRows(state).rows.length + HEADER_ROWS }

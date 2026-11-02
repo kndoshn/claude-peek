@@ -512,14 +512,15 @@ test('autocomplete leaves other prompts alone', async ($, on) => {
   expect((await autocomplete($, 'read REA')).suggestions).toEqual([])
 })
 
-test('completion lists the project files once for a few seconds, while a command lists them afresh', async ($, on) => {
-  const r = engine(on, { '/proj/docs/setup.md': 's' })
+test('completion lists the files once for a few seconds, while a command lists them afresh', async ($, on) => {
+  const r = engine(on, { '/proj/docs/setup.md': 's' }, [assistant('see docs/setup.md')])
   tracked(r, 'docs/setup.md')
   const listed = () => r.ran.filter(run => run.argv[0] === 'git').length
 
   await autocomplete($, '/md s')
   await autocomplete($, '/peek se')
   expect(listed()).toBe(1)
+  expect(r.messageReads).toBe(1)
 
   await r.clock.advance(5000)
   await autocomplete($, '/md set')

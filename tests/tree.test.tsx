@@ -133,6 +133,21 @@ test('part of a name finds a folder or a repository of ghq', async ($, on) => {
   expect(r.opened).toEqual(['shok/', 'guide/'])
 })
 
+test('the tree is not read while another tab stands in front of the pane', async ($, on) => {
+  const files: Files = { '/proj/docs/a.md': 'a' }
+  const r = engine(on, files)
+  await start($)
+  await peek($, 'docs')
+  r.isShown = false
+  files['/proj/docs/b.md'] = 'b'
+  await r.clock.advance(10000)
+  expect(r.ran.filter(run => run.argv[1] === 'rev-parse').length).toBe(1)
+
+  r.isShown = true
+  await r.clock.advance(1000)
+  expect(await rows($)).toEqual(['├── a.md', '└── b.md'])
+})
+
 test('the tree is read again every 5 seconds while shown, and when a turn ends', async ($, on) => {
   const files: Files = { '/proj/docs/a.md': 'a' }
   const r = engine(on, files)

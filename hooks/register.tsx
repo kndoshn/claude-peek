@@ -4,7 +4,7 @@ import { candidates, recentMessages, existing, resetFind, resolvePlace, where } 
 import type { Kind } from './find'
 import { configureLanguage, messages } from './messages'
 import type { Messages } from './messages'
-import { forgetPane, isShowing, navigate, PANE, reopen } from './nav'
+import { forgetPane, isPaneShown, navigate, openView, PANE, reopen } from './nav'
 import { rank, suggestion } from './pure/paths'
 import { parseTarget } from './pure/target'
 import { drawBand } from './ui/band'
@@ -31,11 +31,15 @@ const MAX_SUGGESTIONS = 10
 // The tools whose calls may change files.
 const CHANGING_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
-// Every tick: the file shown is checked for changes on disk, the tree is read again when due.
+// Every tick: the file open is checked for changes on disk; the tree or Git is read again when
+// due, only while the pane is in sight, as nobody sees it otherwise.
 async function watch($: Api): Promise<void> {
-  if (await isShowing($, 'file')) await refreshFile($)
-  if (await isShowing($, 'tree')) await tickTree($, await messages($))
-  if (await isShowing($, 'git')) await tickGit($, await messages($))
+  const view = await openView($)
+  if (view === 'file') await refreshFile($)
+  if (view !== 'tree' && view !== 'git') return
+  if (!(await isPaneShown($))) return
+  if (view === 'tree') await tickTree($, await messages($))
+  else await tickGit($, await messages($))
 }
 
 // What a command says when it opened something, or why not.

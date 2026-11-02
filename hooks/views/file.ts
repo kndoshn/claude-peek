@@ -169,7 +169,7 @@ export async function offerNamed($: Api): Promise<void> {
   const [path] = await existing($, at, sinceLastPrompt(await recentMessages($)), 'markdown')
   const shown = await read($, file)
   const offered = path && path !== shown?.path ? describe(at, path) : null
-  await update($, offer, () => offered)
+  if (offered?.path !== (await read($, offer))?.path) await update($, offer, () => offered)
 }
 
 export async function dismissOffer($: Api): Promise<void> {

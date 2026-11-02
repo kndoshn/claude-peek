@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { PANE, autocomplete, button, command, engine, pane, peek, press, pressPane, start } from './support'
+import { PANE, autocomplete, button, command, engine, pane, peek, press, pressPane, start, turnEnds } from './support'
 import type { Recorded } from './support'
 
 const STATUS = [
@@ -158,6 +158,48 @@ test('Git is read again every 5 seconds while shown, and Refresh reads it at onc
   repository(r)
   await press($, 'refresh')
   expect((await texts($, 'Button')).length).toBe(5)
+})
+
+test('an open commit is read once, and the history again only when the status moved or something may have changed it', async ($, on) => {
+  const r = engine(on, {})
+  repository(r)
+  await start($)
+  await peek($, 'git')
+  await pressPane($, 'commit:abc1234')
+  const runs = (sub: string) => r.ran.filter(run => run.argv[1] === sub).length
+  expect([runs('status'), runs('log'), runs('show')]).toEqual([2, 2, 3])
+
+  // Nothing moved: the status alone is read.
+  await r.clock.advance(5000)
+  expect([runs('status'), runs('log'), runs('show')]).toEqual([3, 2, 3])
+
+  // A turn ended: all is read again but the commit, which never changes.
+  await turnEnds($)
+  await r.clock.advance(1000)
+  expect([runs('status'), runs('log'), runs('show')]).toEqual([4, 3, 3])
+
+  // The status moved: the history is read again.
+  r.commands['git status --porcelain=v2 --branch --show-stash -z --untracked-files=normal'] = { exitCode: 0, stdout: STATUS.replace('+1 -2', '+2 -2') }
+  await r.clock.advance(5000)
+  expect(runs('log')).toBe(4)
+  expect((await pane($)).header).toBe('abc1234 Fix the parser')
+  await press($, 'back')
+  expect((await pane($)).header).toBe('/proj · main ↑2 ↓2 · stash 1')
+})
+
+test('Git is not read while another tab stands in front of the pane', async ($, on) => {
+  const r = engine(on, {})
+  repository(r)
+  await start($)
+  await peek($, 'git')
+  r.isShown = false
+  await turnEnds($)
+  await r.clock.advance(10000)
+  expect(r.ran.filter(run => run.argv[1] === 'status').length).toBe(1)
+
+  r.isShown = true
+  await r.clock.advance(1000)
+  expect(r.ran.filter(run => run.argv[1] === 'status').length).toBe(2)
 })
 
 test('completion offers git for /peek', async ($, on) => {

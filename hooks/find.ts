@@ -14,7 +14,7 @@ export type Kind = 'place' | 'markdown'
 
 // How far back the commands and the completion look in the conversation.
 const RECENT_MESSAGES = 30
-// How long completion reuses the project's file list, so typing does not list it per key.
+// How long completion reuses what it listed, so typing does not list it again per key.
 const LIST_TTL_MS = 5000
 // The largest file read: what one read of the engine copies at most.
 const MAX_READ_BYTES = 4 * 1024 * 1024
@@ -55,33 +55,39 @@ export async function existing($: Api, at: Where, messages: readonly SessionMess
   return paths.filter((_, i) => found[i])
 }
 
-// The project's files and the repositories of ghq that completion last listed, reused for
-// LIST_TTL_MS.
-let listed: { cwd: string; at: number; files: string[]; repos: string[] } | undefined
+type Listing = { named: string[]; files: string[]; repos: string[] }
+
+// What completion last listed, reused for LIST_TTL_MS.
+let listed: (Listing & { cwd: string; at: number }) | undefined
 
 // Forgets what an earlier load of the module listed.
 export function resetFind(): void {
   listed = undefined
 }
 
-// The project's files relative to the working directory (git's list: untracked ones too,
-// ignored ones not; else fd's outside a repository; else none) and the repositories of ghq,
-// absolute. Unless `fresh`, a list taken in the last few seconds is reused.
-async function listings($: Api, cwd: string, fresh: boolean): Promise<{ files: string[]; repos: string[] }> {
+// The project's files relative to the working directory: git's list (untracked ones too, ignored
+// ones not), else fd's outside a repository, else none.
+async function projectFiles($: Api): Promise<string[]> {
+  const git = await $.process.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard']).catch(() => undefined)
+  if (git?.exitCode === 0) return git.stdout.split('\0').filter(Boolean)
+  const fd = await $.process.run(['fd', '--type', 'f', '--hidden', '--exclude', '.git']).catch(() => undefined)
+  return fd?.exitCode === 0 ? fd.stdout.split('\n').filter(Boolean) : []
+}
+
+// The repositories of ghq, absolute, or none without ghq.
+async function ghqRepos($: Api): Promise<string[]> {
+  const ghq = await $.process.run(['ghq', 'list', '-p']).catch(() => undefined)
+  return ghq?.exitCode === 0 ? ghq.stdout.split('\n').filter(Boolean) : []
+}
+
+// The files the recent replies named that are there, the project's files and the repositories
+// of ghq, read side by side. Unless `fresh`, a listing taken in the last few seconds is reused.
+async function listings($: Api, at: Where, fresh: boolean): Promise<Listing> {
   const now = await $.clock.now().catch(() => undefined)
-  if (!fresh && listed?.cwd === cwd && now !== undefined && now - listed.at < LIST_TTL_MS) return listed
-  const run = (argv: string[]) => $.process.run(argv).catch(() => undefined)
-  const git = await run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'])
-  let files: string[] = []
-  if (git?.exitCode === 0) files = git.stdout.split('\0').filter(Boolean)
-  else {
-    const fd = await run(['fd', '--type', 'f', '--hidden', '--exclude', '.git'])
-    if (fd?.exitCode === 0) files = fd.stdout.split('\n').filter(Boolean)
-  }
-  const ghq = await run(['ghq', 'list', '-p'])
-  const repos = ghq?.exitCode === 0 ? ghq.stdout.split('\n').filter(Boolean) : []
-  if (now !== undefined) listed = { cwd, at: now, files, repos }
-  return { files, repos }
+  if (!fresh && listed?.cwd === at.cwd && now !== undefined && now - listed.at < LIST_TTL_MS) return listed
+  const [named, files, repos] = await Promise.all([existing($, at, await recentMessages($), 'place'), projectFiles($), ghqRepos($)])
+  if (now !== undefined) listed = { cwd: at.cwd, at: now, named, files, repos }
+  return { named, files, repos }
 }
 
 // The folders the files are in, each with a closing slash.
@@ -97,8 +103,8 @@ function folders(files: readonly string[]): string[] {
 // The labels to choose from: the files the conversation named, then the project's files; for a
 // place also the project's folders and the repositories of ghq, each with a closing slash.
 export async function candidates($: Api, at: Where, kind: Kind, fresh: boolean): Promise<string[]> {
-  const conversation = (await existing($, at, await recentMessages($), kind)).map(path => describe(at, path).label)
-  const { files, repos } = await listings($, at.cwd, fresh)
+  const { named, files, repos } = await listings($, at, fresh)
+  const conversation = named.filter(path => accepts(kind, path)).map(path => describe(at, path).label)
   const places = kind === 'place' ? [...folders(files), ...repos.map(repo => `${describe(at, repo).label}/`)] : []
   return [...new Set([...conversation, ...files.filter(path => accepts(kind, path)), ...places])]
 }

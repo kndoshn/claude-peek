@@ -42,6 +42,10 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     copied: [] as string[],
     scrolls: [] as unknown[],
     selection: undefined as { text: string; requestId?: string } | undefined,
+    // Whether the surface shows the pane, rather than another tab in front of it.
+    isShown: true,
+    // How often the conversation was read.
+    messageReads: 0,
     draft: '',
     mtimes: {} as Record<string, number>,
     env: {} as Record<string, string>,
@@ -68,7 +72,10 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     return { value: undefined }
   })
   on('ui.panes', () => ({
-    value: record.opened.length > record.closed.length ? [{ id: PLUGIN, title: '', isShown: true, isFocused: false, isPlaced: true }] : [],
+    value:
+      record.opened.length > record.closed.length
+        ? [{ id: PLUGIN, title: '', isShown: record.isShown, isFocused: false, isPlaced: true }]
+        : [],
   }))
   on('ui.scroll', (_, e) => {
     record.scrolls.push(e.requestId)
@@ -116,7 +123,10 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     }
     return { value: [...names.values()] }
   })
-  on('session.messages', () => ({ value: messages }))
+  on('session.messages', () => {
+    record.messageReads += 1
+    return { value: messages }
+  })
   on('ui.selection', () => ({ value: record.selection }))
   on('prompt.read', () => ({ value: { text: record.draft, cursor: record.draft.length } }))
   on('prompt.fill', (_, e) => {

@@ -152,10 +152,17 @@ export async function switchView($: Api, say: Messages, view: ViewName): Promise
   await openPane($, opened)
 }
 
-// Whether the pane is open on `view`.
-export async function isShowing($: Api, view: ViewName): Promise<boolean> {
+// The view the pane is open on, or null while it is closed.
+export async function openView($: Api): Promise<ViewName | null> {
   const state = await read($, nav)
-  return state.isOpen && state.view === view
+  return state.isOpen ? state.view : null
+}
+
+// Whether a surface shows the pane now: not while another tab stands in front of it or it waits
+// undrawn. Shown when the engine cannot say.
+export async function isPaneShown($: Api): Promise<boolean> {
+  const panes = await $.ui.panes().catch(() => undefined)
+  return panes === undefined || panes.some(pane => pane.id === PANE && pane.isShown)
 }
 
 export async function closePane($: Api): Promise<void> {
