@@ -2,6 +2,10 @@
   "name": "peek",
   "version": "0.8.0",
   "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt",
+  "author": {
+    "name": "kndoshn",
+    "url": "https://github.com/kndoshn"
+  },
   "license": "MIT",
   "keywords": [
     "markdown",

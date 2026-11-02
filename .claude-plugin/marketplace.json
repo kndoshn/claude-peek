@@ -9,5 +9,6 @@
       "source": "./",
       "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt"
     }
-  ]
+  ],
+  "description": "claude-peek: peek at files, folders, Git and command output beside the chat in Claude Code, and quote what you need"
 }

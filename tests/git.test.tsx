@@ -165,10 +165,16 @@ test('completion offers git for /peek', async ($, on) => {
   expect((await autocomplete($, '/peek gi')).suggestions[0]).toEqual({ text: 'git', label: 'git', description: 'Git' })
 })
 
-test('/tree and /git are there only when the setting asks for them', async ($, on) => {
+test('/tree and /git are there only when the setting asks for them, and left to others otherwise', async ($, on) => {
   const r = engine(on, {})
+  repository(r)
+  // Another plugin's /git, beneath peek.
+  on('command.run', { command: 'git' }, () => ({ text: 'theirs' }))
   await start($)
   expect(r.registered).toEqual(['peek', 'md'])
+
+  expect((await command($, 'git', '')).text).toBe('theirs')
+  expect(r.opened).toEqual([])
 })
 
 test('with the setting on, /tree and /git open their views', { options: { shortCommands: true } }, async ($, on) => {

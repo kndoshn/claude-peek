@@ -117,8 +117,10 @@ export const register: Register = (on, options: PluginOptions) => {
 
   on('command.run', { command: 'peek' }, async ($, e) => peekCommand($, e.args))
   on('command.run', { command: 'md' }, async ($, e) => mdCommand($, e.args))
-  on('command.run', { command: 'tree' }, async ($, e) => treeCommand($, e.args))
-  on('command.run', { command: 'git' }, async $ => {
+  // Without the setting, /tree and /git are another plugin's or skill's, if anyone's.
+  on('command.run', { command: 'tree' }, async ($, e, next) => (hasShortCommands ? treeCommand($, e.args) : next(e)))
+  on('command.run', { command: 'git' }, async ($, e, next) => {
+    if (!hasShortCommands) return next(e)
     const say = await messages($)
     return report(say, await navigate($, say, { view: 'git' }, 'anew'))
   })
