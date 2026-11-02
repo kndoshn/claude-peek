@@ -28,7 +28,7 @@ const MAX_LINKS = 256
 
 // The pane: a header with the file, its line count and the view, then the file in that view.
 export async function drawPane($: Api, e: RenderInput<'Pane'>): Promise<RenderElement> {
-  const { Box, Code, Markdown, Text } = $.ui.resolve(e)
+  const { Box, Button, Code, Markdown, Text } = $.ui.resolve(e)
   const say = await messages($)
   const shown = await shownDoc($)
   if (!shown) return <Text dimColor>{say.emptyPane}</Text>
@@ -64,13 +64,17 @@ export async function drawPane($: Api, e: RenderInput<'Pane'>): Promise<RenderEl
 
   return (
     <Box flexDirection="column" gap={1}>
-      <Box key="header">
-        <Text>
-          <Text weight="bold">{shown.label}</Text>
-          <Text dimColor>{notes.map(note => ` · ${note}`).join('')}</Text>
-          {shown.isDeleted && <Text color="error">{` · ${say.deleted}`}</Text>}
-          {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}
-        </Text>
+      <Box justifyContent="space-between" gap={1}>
+        <Box key="header" flexShrink={1}>
+          <Text>
+            <Text weight="bold">{shown.label}</Text>
+            <Text dimColor>{notes.map(note => ` · ${note}`).join('')}</Text>
+            {shown.isDeleted && <Text color="error">{` · ${say.deleted}`}</Text>}
+            {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}
+          </Text>
+        </Box>
+        {/* The engine's own close mark is one cell wide; this is a wider target. */}
+        <Button key="pane-close" label={say.closePane} hotkey="x" onPress={() => close($)} />
       </Box>
       {body}
     </Box>

@@ -16,6 +16,7 @@ export type Messages = {
   selectFirst: string
   quote: string
   close: string
+  closePane: string
   open: (label: string) => string
   dismiss: string
   source: string
@@ -44,6 +45,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     selectFirst: 'Select a passage in the pane with the mouse first',
     quote: 'Quote selection',
     close: 'Close',
+    closePane: '× Close',
     open: label => `Open ${label}`,
     dismiss: '×',
     source: 'Source',
@@ -70,6 +72,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     selectFirst: '引用する箇所を先にマウスで選択してください',
     quote: '選択を引用',
     close: '閉じる',
+    closePane: '× 閉じる',
     open: label => `開く: ${label}`,
     dismiss: '×',
     source: 'ソース',
