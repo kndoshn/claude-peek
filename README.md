@@ -41,6 +41,12 @@ prompt below that.
 | typing `/md pl` | completes to matching Markdown files |
 | a reply names a `.md` | offers **Open docs/plan.md** above the prompt; **×** dismisses it |
 
+The pane is headed by the file, its line count and the view. It checks the file every second
+and redraws when it changed on disk, whether Claude, your editor or a script changed it; a file
+deleted on disk stays shown, marked as deleted. A relative link to another Markdown file
+(`[setup](../setup.md)`) opens that file in the pane when clicked. Front matter is drawn as a
+YAML block. A file too long to draw is cut, and the header says so.
+
 While a file is open, a row above the prompt has:
 
 - **Quote selection**: appends the passage you selected in the pane to your draft:
@@ -52,11 +58,19 @@ While a file is open, a row above the prompt has:
   > - see the setup guide
   ```
 
-  The line numbers come from finding the selected text in the file's source. When it cannot be
-  found (a passage drawn from an image's alt text, say), the quote is headed by the file alone.
-- **Reload**: reads the file again. md-review also checks the file every second and redraws the
-  pane when it changed on disk, whether Claude, your editor or a script changed it.
+  The line numbers come from finding the selected text in the file's source, or from the line
+  numbers of the source view when the selection carries them. When the text cannot be found (a
+  passage drawn from an image's alt text, say), the quote is headed by the file alone.
+- **Source** / **Rendered**: switches between the rendered file and the file as written, with
+  line numbers.
+- **Changes +3 −1**: shows what changed in the file since your last message, as a diff. It
+  appears once the file changed; your next message starts the count again. **Hide changes**
+  returns to the file.
+- **← Back**: returns to the file you followed a link from.
 - **Close**: closes the pane. So do Esc and the pane's close mark.
+
+Click a button, or focus the row (ctrl+x tab, or a click) and press its letter: `q` quote, `s`
+source, `d` changes, `b` back, `o` open the offered file.
 
 Only `.md` and `.markdown` files open. The project's files are those `git ls-files` lists
 (tracked and untracked, not ignored); outside a git repository, those `fd` lists, if it is

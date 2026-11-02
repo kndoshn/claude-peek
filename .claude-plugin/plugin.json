@@ -1,6 +1,6 @@
 {
   "name": "md-review",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Read a Markdown file in a pane beside the chat and quote selected passages, with their line numbers, into the prompt",
   "license": "MIT",
   "keywords": ["markdown", "review", "pane", "mod"],

@@ -97,6 +97,7 @@ function engine(on: On, files: Files, messages: Message[] = []) {
   })
   on('turn.complete', () => ({ text: '' }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('prompt.submit', (_, e) => ({ text: e.text }))
   return record
 }
 
@@ -167,19 +168,50 @@ async function shown($: Engine): Promise<string | undefined> {
   return typeof text === 'string' ? text : undefined
 }
 
-async function quote($: Engine) {
+// Presses a button of the band.
+async function press($: Engine, key: string) {
   const ui = await $.ui.mount(BAND)
-  await ui.press({ key: 'quote' })
+  await ui.press({ key })
   await ui.unmount()
+}
+
+// The label of a button of the band, or undefined while it is not drawn.
+async function button($: Engine, key: string): Promise<string | undefined> {
+  const ui = await $.ui.mount(BAND)
+  const found = await ui.find({ key })
+  await ui.unmount()
+  return found?.text
+}
+
+// What the pane draws: its texts, and the props of its Markdown or Code element.
+async function pane($: Engine) {
+  const ui = await $.ui.mount(PANE)
+  const markdown = (await ui.find({ type: 'Markdown' }))?.props
+  const code = (await ui.find({ type: 'Code' }))?.props
+  const header = (await ui.find({ key: 'header' }))?.text
+  await ui.unmount()
+  return { markdown, code, header }
+}
+
+async function quote($: Engine) {
+  await press($, 'quote')
 }
 
 async function closePane($: Engine) {
-  const ui = await $.ui.mount(BAND)
-  await ui.press({ key: 'close' })
-  await ui.unmount()
+  await press($, 'close')
+}
+
+async function submit($: Engine, text: string, command?: string) {
+  await $.prompt.submit({
+    text,
+    wait: false,
+    origin: { kind: 'composer' },
+    ...(command ? { command: { name: command, args: '' } } : {}),
+  })
 }
 
 test('/md <path> opens the file relative to the working directory', async ($, on) => {
+  mock.clock(on)
   const files = { '/proj/docs/plan.md': '# Plan\n\nBody' }
   const r = engine(on, files)
   await start($)
@@ -188,10 +220,9 @@ test('/md <path> opens the file relative to the working directory', async ($, on
   expect(result.text).toBe('Opened docs/plan.md')
   expect(r.opened).toEqual(['plan.md'])
 
-  const ui = await $.ui.mount(PANE)
-  expect((await ui.find({ type: 'Text', text: /docs\/plan\.md/ }))?.text).toBe('docs/plan.md')
-  expect((await ui.find({ type: 'Markdown' }))?.props.text).toBe('# Plan\n\nBody')
-  await ui.unmount()
+  const { header, markdown } = await pane($)
+  expect(header).toBe('docs/plan.md · 3 lines')
+  expect(markdown?.text).toBe('# Plan\n\nBody')
 })
 
 test('/md expands ~/ and shows a path outside the project from the home', async ($, on) => {
@@ -199,9 +230,7 @@ test('/md expands ~/ and shows a path outside the project from the home', async 
 
   await md($, '~/notes/idea.md')
   expect(r.opened).toEqual(['idea.md'])
-  const ui = await $.ui.mount(PANE)
-  expect((await ui.find({ type: 'Text', text: /idea\.md/ }))?.text).toBe('~/notes/idea.md')
-  await ui.unmount()
+  expect((await pane($)).header).toBe('~/notes/idea.md · 1 line')
 })
 
 test('/md refuses other files and names that match nothing', async ($, on) => {
@@ -342,22 +371,159 @@ test('a change to the open file, by Claude or anything else, redraws the pane', 
   await clock.advance(1000)
   expect(await shown($)).toBe('after')
 
-  // A file that went away keeps what was shown.
+  // A file that went away keeps what was shown, marked as gone until it comes back.
   delete files['/proj/a.md']
   await clock.advance(1000)
   expect(await shown($)).toBe('after')
+  expect((await pane($)).header).toContain('deleted')
+
+  files['/proj/a.md'] = 'back'
+  r.mtimes['/proj/a.md'] = 9
+  await clock.advance(1000)
+  expect(await shown($)).toBe('back')
+  expect((await pane($)).header).not.toContain('deleted')
 })
 
-test('the reload button reads the file again', async ($, on) => {
-  const files: Files = { '/proj/a.md': 'before' }
-  engine(on, files)
-  await md($, 'a.md')
-  files['/proj/a.md'] = 'after'
+test('the pane is headed by the file and its line count', async ($, on) => {
+  engine(on, { '/proj/docs/a.md': 'one\ntwo\nthree\n' })
+  await md($, 'docs/a.md')
 
-  const ui = await $.ui.mount(BAND)
-  await ui.press({ key: 'reload' })
+  expect((await pane($)).header).toBe('docs/a.md · 3 lines')
+})
+
+test('the source view shows the Markdown as written, numbered by line, and toggles back', async ($, on) => {
+  engine(on, { '/proj/a.md': '# A\n\n**b**\n' })
+  await md($, 'a.md')
+  expect(await button($, 'source')).toBe('Source')
+
+  await press($, 'source')
+  const { code, markdown, header } = await pane($)
+  expect(code).toMatchObject({ source: '# A\n\n**b**\n', language: 'markdown', startLine: 1 })
+  expect(markdown).toBeUndefined()
+  expect(header).toContain('source')
+  expect(await button($, 'source')).toBe('Rendered')
+
+  await press($, 'source')
+  expect((await pane($)).markdown?.text).toBe('# A\n\n**b**\n')
+})
+
+test('changes since the last prompt show as a diff, and the next prompt starts over', async ($, on) => {
+  const clock = mock.clock(on)
+  const files: Files = { '/proj/a.md': 'one\ntwo\nthree\n' }
+  const r = engine(on, files)
+  await start($)
+  await md($, 'a.md')
+  expect(await button($, 'changes')).toBeUndefined()
+
+  files['/proj/a.md'] = 'one\n2\nthree\nfour\n'
+  r.mtimes['/proj/a.md'] = 1
+  await clock.advance(1000)
+  expect(await button($, 'changes')).toBe('Changes +2 −1')
+
+  await press($, 'changes')
+  const { code, header } = await pane($)
+  expect(code?.format).toBe('diff')
+  expect(code?.source).toBe('@@ -1,3 +1,4 @@\n one\n-two\n+2\n three\n+four\n')
+  expect(header).toContain('changes')
+  expect(await button($, 'changes')).toBe('Hide changes')
+
+  // A slash command is no new message; a prompt is, and the file as it stands becomes the base.
+  await submit($, '/md', 'md')
+  expect(await button($, 'changes')).toBe('Hide changes')
+  await submit($, 'thanks')
+  expect(await button($, 'changes')).toBeUndefined()
+  expect((await pane($)).markdown?.text).toBe('one\n2\nthree\nfour\n')
+})
+
+test('the diff keeps far apart changes in hunks of their own', async ($, on) => {
+  const clock = mock.clock(on)
+  const before = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`)
+  const after = before.map(line => (line === 'line 2' ? 'LINE 2' : line === 'line 18' ? 'LINE 18' : line))
+  const files: Files = { '/proj/a.md': before.join('\n') }
+  const r = engine(on, files)
+  await start($)
+  await md($, 'a.md')
+
+  files['/proj/a.md'] = after.join('\n')
+  r.mtimes['/proj/a.md'] = 1
+  await clock.advance(1000)
+  await press($, 'changes')
+  const hunks = String((await pane($)).code?.source).match(/^@@ .* @@$/gm)
+  expect(hunks).toEqual(['@@ -1,5 +1,5 @@', '@@ -15,6 +15,6 @@'])
+})
+
+test('a relative link to a Markdown file opens it in the pane, and Back returns', async ($, on) => {
+  const files = {
+    '/proj/docs/guide/index.md': 'See [setup](../setup.md#install), ![img](pic.md), `[x](code.md)` and [web](https://example.com).',
+    '/proj/docs/setup.md': '# Setup',
+  }
+  const r = engine(on, files)
+  await md($, 'docs/guide/index.md')
+
+  const { markdown } = await pane($)
+  expect(markdown?.text).toBe(
+    'See [setup](file:///proj/docs/setup.md), ![img](pic.md), `[x](code.md)` and [web](https://example.com).',
+  )
+  expect(markdown?.pressableLinks).toEqual(['file:///proj/docs/setup.md'])
+
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'doc', link: { href: 'file:///proj/docs/setup.md' } })
   await ui.unmount()
-  expect(await shown($)).toBe('after')
+  expect(r.opened).toEqual(['index.md', 'setup.md'])
+  expect(await shown($)).toBe('# Setup')
+
+  expect(await button($, 'back')).toBe('← Back')
+  await press($, 'back')
+  expect(r.opened).toEqual(['index.md', 'setup.md', 'index.md'])
+  expect(await button($, 'back')).toBeUndefined()
+})
+
+test('a link to a file that does not exist says so and stays', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': '[gone](gone%20file.md)' })
+  await md($, 'a.md')
+  expect((await pane($)).markdown?.pressableLinks).toEqual(['file:///proj/gone%20file.md'])
+
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'doc', link: { href: 'file:///proj/gone%20file.md' } })
+  await ui.unmount()
+  expect(r.opened).toEqual(['a.md'])
+  expect(r.toasts).toEqual(['Cannot read /proj/gone file.md'])
+  expect(await button($, 'back')).toBeUndefined()
+})
+
+test('front matter is drawn as a YAML block', async ($, on) => {
+  engine(on, { '/proj/SKILL.md': '---\nname: x\n---\n# X\n' })
+  await md($, 'SKILL.md')
+
+  expect(await shown($)).toBe('```yaml\nname: x\n```\n# X\n')
+})
+
+test('a file too long to draw is cut, and the header says so', async ($, on) => {
+  engine(on, { '/proj/big.md': `${'x'.repeat(99)}\n`.repeat(2000) })
+  await md($, 'big.md')
+
+  const { markdown, header } = await pane($)
+  expect(String(markdown?.text).length).toBeLessThanOrEqual(90000)
+  expect(header).toContain('cut')
+})
+
+test('a quote taken from the numbered source view drops the numbers and keeps the lines', async ($, on) => {
+  const source = '# Plan\n\nThe **first** step.\n\n- see [docs](docs/a.md)\n'
+  const r = engine(on, { '/proj/a.md': source })
+  await md($, 'a.md')
+  r.selection = { text: '  3 │ The **first** step.\n  4 │\n  5 │ - see [docs](docs/a.md)' }
+
+  await quote($)
+  expect(r.filled[0]?.text).toBe('a.md:3-5\n> The **first** step.\n>\n> - see [docs](docs/a.md)\n\n')
+})
+
+test('numbers that do not match the file stay in the quote', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': '# Steps\n\n1. one\n2. two\n' })
+  await md($, 'a.md')
+  r.selection = { text: '1. one\n2. two' }
+
+  await quote($)
+  expect(r.filled[0]?.text).toBe('a.md:3-4\n> 1. one\n> 2. two\n\n')
 })
 
 test('closing the pane clears the band', async ($, on) => {

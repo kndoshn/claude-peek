@@ -1,24 +1,30 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register, SessionMessage } from 'claude-code'
 
-import type { MdFile } from '../types'
+import type { Doc, MdFile } from '../types'
 import { languageOf, MESSAGES } from './messages'
 import type { Lang, Messages } from './messages'
-import { basename, cite, locate, quote, rank } from './text'
+import { basename, cite, clip, diff, dirname, frontMatter, hunks, lines, linkify, locate, quote, rank, ungutter } from './text'
+import type { Change } from './text'
 
 // md-review: read a Markdown file rendered in a pane beside the chat and quote passages of it
 // into the prompt, so a review needs no other tab, editor or browser.
 //   /md [path]   opens the file: a path, part of a file name, or without one the newest .md
 //                the conversation named; its argument completes to the conversation's and
 //                the project's Markdown files
+//   the pane     the file rendered, as written with line numbers, or the changes since the
+//                person's last message; it follows the file on disk, and a relative link to
+//                another Markdown file opens that file in it
 //   the band     above the prompt: quote the mouse selection headed by its file and lines,
-//                reload, close, and an offer to open the .md the last reply named
-//   the pane     follows the file: a change on disk, by Claude or anything else, redraws it
+//                switch the view, go back, close, and an offer to open the .md the last
+//                reply named
 
 type Api = EngineInterface
 
 const PANE = 'md-review'
-const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-3' })
+const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-4' })
+const view = atom({ plugin: 'md-review', key: 'view' } as const, 'rendered', { shape: 'view-1' })
+const back = atom({ plugin: 'md-review', key: 'back' } as const, [], { shape: 'back-1' })
 const offer = atom({ plugin: 'md-review', key: 'offer' } as const, null, { shape: 'offer-1' })
 
 const MARKDOWN = /\.(md|markdown)$/i
@@ -30,6 +36,10 @@ const RECENT_MESSAGES = 30
 const MAX_SUGGESTIONS = 10
 // How often the open file is checked for changes on disk.
 const WATCH_MS = 1000
+// The most text the pane draws, under the 100000 characters a drawing takes.
+const DRAW_LIMIT = 90_000
+// The most links in one drawing the pane answers.
+const MAX_LINKS = 256
 
 async function home($: Api): Promise<string | undefined> {
   return $.env.get('HOME')
@@ -118,9 +128,11 @@ async function resolveArg($: Api, arg: string): Promise<string | undefined> {
   return best === undefined ? undefined : absolute($, best)
 }
 
+// The file's modification time, or undefined when it is not there.
 async function mtime($: Api, path: string): Promise<number | undefined> {
   try {
-    return (await $.fs.stat(path)).mtimeMs
+    const stat = await $.fs.stat(path)
+    return stat.kind === 'file' ? stat.mtimeMs : undefined
   } catch {
     return undefined
   }
@@ -136,31 +148,77 @@ async function load($: Api, path: string): Promise<{ text: string; mtimeMs: numb
   }
 }
 
-// Opens `path` in the pane: true, or what to say about why not.
+// Opens `path` in the pane, rendered, the text as read now the base its changes are counted
+// from: the file's label, or what to say about why not.
 async function open($: Api, say: Messages, path: string): Promise<{ label: string } | { error: string }> {
   if (!MARKDOWN.test(path)) return { error: say.notMarkdown(path) }
   const loaded = await load($, path)
   if (!loaded) return { error: say.unreadable(path) }
   const file = await describe($, path)
-  await update($, doc, () => ({ ...file, ...loaded }))
+  await update($, doc, () => ({ ...file, ...loaded, base: loaded.text, isDeleted: false }))
+  await update($, view, () => 'rendered' as const)
   await update($, offer, () => null)
   await $.ui.open({ id: PANE, title: basename(path) })
   return { label: file.label }
 }
 
+// Opens a file the person chose afresh (not by a link), so Back starts over.
+async function openAnew($: Api, say: Messages, path: string): Promise<{ label: string } | { error: string }> {
+  const opened = await open($, say, path)
+  if (!('error' in opened)) await update($, back, () => [])
+  return opened
+}
+
+// Follows a link from the open file to `path`, so Back returns to the open file.
+async function follow($: Api, say: Messages, path: string): Promise<void> {
+  const from = await read($, doc)
+  const opened = await open($, say, path)
+  if ('error' in opened) {
+    $.ui.toast(opened.error)
+    return
+  }
+  if (from) await update($, back, history => [...history, from.path])
+}
+
+// Returns to the file the last link was followed from; one that cannot be read is dropped.
+async function goBack($: Api, say: Messages): Promise<void> {
+  const history = await read($, back)
+  const previous = history[history.length - 1]
+  if (previous === undefined) return
+  const opened = await open($, say, previous)
+  if ('error' in opened) $.ui.toast(opened.error)
+  await update($, back, () => history.slice(0, -1))
+}
+
 async function close($: Api): Promise<void> {
   await update($, doc, () => null)
+  await update($, back, () => [])
   await $.ui.close({ id: PANE })
 }
 
-// Reads the open file again when it changed on disk since it was read; a file gone stays shown.
+// Reads the open file again when it changed on disk since it was read. A file gone stays shown,
+// marked as gone until it is back.
 async function refresh($: Api): Promise<void> {
   const shown = await read($, doc)
   if (!shown) return
   const now = await mtime($, shown.path)
-  if (now === undefined || now === shown.mtimeMs) return
+  const same = (current: Doc | null) => current?.path === shown.path
+  if (now === undefined) {
+    if (!shown.isDeleted) await update($, doc, current => (same(current) && current ? { ...current, isDeleted: true } : current))
+    return
+  }
+  if (now === shown.mtimeMs && !shown.isDeleted) return
   const loaded = await load($, shown.path)
-  if (loaded) await update($, doc, current => (current?.path === shown.path ? { ...current, ...loaded } : current))
+  if (loaded) await update($, doc, current => (same(current) && current ? { ...current, ...loaded, isDeleted: false } : current))
+}
+
+// The changes from the file's base to its text, worked out once for each pair.
+let compared: { base: string; text: string; changes: Change[] } | undefined
+function changesOf(shown: Doc): Change[] {
+  if (compared?.base !== shown.base || compared.text !== shown.text) {
+    compared = { base: shown.base, text: shown.text, changes: diff(shown.base, shown.text) }
+  }
+  return compared.changes
 }
 
 // The language option as set: auto, en or ja.
@@ -211,7 +269,7 @@ export const register: Register = (on, options: PluginOptions) => {
       ;[path] = await existing($, await recentMessages($))
       if (!path) return { text: say.noneRecent }
     }
-    const opened = await open($, say, path)
+    const opened = await openAnew($, say, path)
 
     return { text: 'error' in opened ? opened.error : say.opened(opened.label) }
   })
@@ -231,6 +289,21 @@ export const register: Register = (on, options: PluginOptions) => {
     }
   })
 
+  // The person's message (not a slash command): the file as it stands becomes the base the
+  // changes are counted from.
+  on('prompt.submit', async ($, e, next) => {
+    if (!e.command && !e.isMeta) {
+      try {
+        await update($, doc, current => (current ? { ...current, base: current.text } : current))
+        if ((await read($, view)) === 'changes') await update($, view, () => 'rendered' as const)
+      } catch {
+        // The changes keep their base.
+      }
+    }
+
+    return next(e)
+  }).catch((_, e, next) => next(e))
+
   // Offer the .md the reply just named, unless it is the one open.
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
@@ -248,20 +321,61 @@ export const register: Register = (on, options: PluginOptions) => {
 
   // The person closed the pane (Esc, its close mark).
   on('ui.close', async ($, e, next) => {
-    if (e.id === PANE) await update($, doc, () => null).catch(() => undefined)
+    if (e.id === PANE) {
+      await update($, doc, () => null).catch(() => undefined)
+      await update($, back, () => []).catch(() => undefined)
+    }
 
     return next(e)
   }).catch((_, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Markdown } = $.ui.resolve(e)
+    const { Box, Code, Markdown, Text } = $.ui.resolve(e)
+    const say = await messages($)
     const shown = await read($, doc)
-    if (!shown) return <Text dimColor>{(await messages($)).emptyPane}</Text>
+    if (!shown) return <Text dimColor>{say.emptyPane}</Text>
+    const mode = await read($, view)
+
+    const notes = [say.lineCount(lines(shown.text).length)]
+    let isCut = false
+    let body
+    if (mode === 'source') {
+      notes.push(say.sourceView)
+      const drawn = clip(shown.text, DRAW_LIMIT)
+      isCut = drawn.isCut
+      body = <Code source={drawn.text} language="markdown" startLine={1} />
+    } else if (mode === 'changes') {
+      notes.push(say.changesView)
+      const drawn = clip(hunks(changesOf(shown)), DRAW_LIMIT, '\n@@')
+      isCut = drawn.isCut
+      body = drawn.text ? <Code source={drawn.text} format="diff" /> : <Text dimColor>{say.noChanges}</Text>
+    } else {
+      const drawn = clip(shown.text, DRAW_LIMIT)
+      isCut = drawn.isCut
+      const { text, links } = linkify(frontMatter(drawn.text), dirname(shown.path))
+      const pressable = [...links.keys()].slice(0, MAX_LINKS)
+      const press = (link: { href: string }) => {
+        const target = links.get(link.href)
+        if (target) return follow($, say, target)
+      }
+      body = pressable.length ? (
+        <Markdown key="doc" text={text} pressableLinks={pressable} onLinkPress={press} />
+      ) : (
+        <Markdown key="doc" text={text} />
+      )
+    }
 
     return (
-      <Box flexDirection="column">
-        <Text dimColor>{shown.label}</Text>
-        <Markdown text={shown.text} />
+      <Box flexDirection="column" gap={1}>
+        <Box key="header">
+          <Text>
+            <Text weight="bold">{shown.label}</Text>
+            <Text dimColor>{notes.map(note => ` · ${note}`).join('')}</Text>
+            {shown.isDeleted && <Text color="error">{` · ${say.deleted}`}</Text>}
+            {isCut && <Text color="warning">{` · ${say.cut}`}</Text>}
+          </Text>
+        </Box>
+        {body}
       </Box>
     )
   })
@@ -272,6 +386,11 @@ export const register: Register = (on, options: PluginOptions) => {
     if (e.props.hasSurvey || (!shown && !offered)) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const say = await messages($)
+    const mode = await read($, view)
+    const history = await read($, back)
+    const changes = shown ? changesOf(shown) : []
+    const added = changes.filter(change => change.kind === '+').length
+    const removed = changes.filter(change => change.kind === '-').length
 
     const quoteSelection = async () => {
       const current = await read($, doc)
@@ -282,33 +401,38 @@ export const register: Register = (on, options: PluginOptions) => {
       }
       const draft = (await $.prompt.read()).text
       const gap = draft === '' || draft.endsWith('\n\n') ? '' : draft.endsWith('\n') ? '\n' : '\n\n'
-      const head = cite(current.label, locate(current.text, selected.text))
-      await $.prompt.fill({ text: `${gap}${head}\n${quote(selected.text)}\n\n`, mode: 'append' })
+      // A selection from the source view carries its line numbers, which tell the lines.
+      const numbered = ungutter(current.text, selected.text)
+      const text = numbered?.text ?? selected.text
+      const head = cite(current.label, numbered?.lines ?? locate(current.text, selected.text))
+      await $.prompt.fill({ text: `${gap}${head}\n${quote(text)}\n\n`, mode: 'append' })
     }
-    const reload = async () => {
-      const current = await read($, doc)
-      if (!current) return
-      const loaded = await load($, current.path)
-      if (!loaded) {
-        $.ui.toast(say.unreadable(current.label))
-        return
-      }
-      await update($, doc, () => ({ ...current, ...loaded }))
-    }
+    const toggle = (to: 'source' | 'changes') => update($, view, current => (current === to ? 'rendered' : to))
     const openOffered = async () => {
       if (!offered) return
-      const opened = await open($, say, offered.path)
+      const opened = await openAnew($, say, offered.path)
       if ('error' in opened) $.ui.toast(opened.error)
     }
 
     return (
-      <Box gap={1}>
+      <Box gap={1} flexWrap="wrap">
         {shown && <Text dimColor>{shown.label}</Text>}
-        {shown && <Button key="quote" label={say.quote} hotkey="q" onPress={quoteSelection} />}
-        {shown && <Button key="reload" label={say.reload} hotkey="r" onPress={reload} />}
-        {shown && <Button key="close" label={say.close} onPress={() => close($)} />}
+        {shown && <Button key="quote" label={say.quote} hotkey="q" variant="primary" onPress={quoteSelection} />}
+        {shown && (
+          <Button key="source" label={mode === 'source' ? say.rendered : say.source} hotkey="s" onPress={() => toggle('source')} />
+        )}
+        {shown && (mode === 'changes' || added + removed > 0) && (
+          <Button
+            key="changes"
+            label={mode === 'changes' ? say.hideChanges : say.changes(added, removed)}
+            hotkey="d"
+            onPress={() => toggle('changes')}
+          />
+        )}
+        {shown && history.length > 0 && <Button key="back" label={say.back} hotkey="b" onPress={() => goBack($, say)} />}
+        {shown && <Button key="close" label={say.close} dimColor onPress={() => close($)} />}
         {offered && <Button key="offer" label={say.open(offered.label)} hotkey="o" onPress={openOffered} />}
-        {offered && <Button key="dismiss" label={say.dismiss} onPress={() => update($, offer, () => null)} />}
+        {offered && <Button key="dismiss" label={say.dismiss} dimColor onPress={() => update($, offer, () => null)} />}
       </Box>
     )
   })

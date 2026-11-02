@@ -13,10 +13,20 @@ export type Messages = {
   emptyPane: string
   selectFirst: string
   quote: string
-  reload: string
   close: string
   open: (label: string) => string
   dismiss: string
+  source: string
+  rendered: string
+  changes: (added: number, removed: number) => string
+  hideChanges: string
+  back: string
+  lineCount: (count: number) => string
+  sourceView: string
+  changesView: string
+  noChanges: string
+  deleted: string
+  cut: string
 }
 
 export const MESSAGES: Record<Lang, Messages> = {
@@ -31,10 +41,20 @@ export const MESSAGES: Record<Lang, Messages> = {
     emptyPane: '/md [path] opens a Markdown file here',
     selectFirst: 'Select a passage in the pane with the mouse first',
     quote: 'Quote selection',
-    reload: 'Reload',
     close: 'Close',
     open: label => `Open ${label}`,
     dismiss: '×',
+    source: 'Source',
+    rendered: 'Rendered',
+    changes: (added, removed) => `Changes +${added} −${removed}`,
+    hideChanges: 'Hide changes',
+    back: '← Back',
+    lineCount: count => (count === 1 ? '1 line' : `${count} lines`),
+    sourceView: 'source',
+    changesView: 'changes since your last message',
+    noChanges: 'No changes since your last message',
+    deleted: 'deleted on disk',
+    cut: 'too long: cut to fit',
   },
   ja: {
     command: 'Markdown を横のパネルで読む（パスなしで直近の .md）',
@@ -47,10 +67,20 @@ export const MESSAGES: Record<Lang, Messages> = {
     emptyPane: '/md [path] で Markdown を開きます',
     selectFirst: '引用する箇所を先にマウスで選択してください',
     quote: '選択を引用',
-    reload: '再読込',
     close: '閉じる',
     open: label => `開く: ${label}`,
     dismiss: '×',
+    source: 'ソース',
+    rendered: '整形',
+    changes: (added, removed) => `変更 +${added} −${removed}`,
+    hideChanges: '変更を閉じる',
+    back: '← 戻る',
+    lineCount: count => `${count} 行`,
+    sourceView: 'ソース',
+    changesView: '前回の送信からの変更',
+    noChanges: '前回の送信からの変更はありません',
+    deleted: 'ディスクから削除されました',
+    cut: '長いので途中まで表示',
   },
 }
 
