@@ -732,7 +732,7 @@ test('a suggestion shows the file name, and beside it the folder when there is o
   ])
 })
 
-test('in a dark theme the pane is painted a little above black, in a light one as the theme has it', async ($, on) => {
+test("in a dark theme the pane takes the terminal's background, in a light one the theme's", async ($, on) => {
   const r = engine(on, { '/proj/a.md': 'a' })
   r.config = [{ key: 'theme', value: 'dark-ansi' }]
   await md($, 'a.md')
@@ -741,5 +741,5 @@ test('in a dark theme the pane is painted a little above black, in a light one a
   r.config = []
   await md($, 'a.md')
 
-  expect(r.backgrounds).toEqual(['rgb(16, 16, 16)', undefined, undefined])
+  expect(r.backgrounds).toEqual(['transparent', undefined, undefined])
 })

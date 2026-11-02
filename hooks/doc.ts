@@ -19,8 +19,8 @@ export const PANE = 'md-review'
 const READING_COLUMNS = 100
 // The pane's header line and the gap under it.
 const HEADER_ROWS = 2
-// The pane's background in a dark theme.
-const DARK_BACKGROUND = 'rgb(16, 16, 16)'
+// The pane's background in a dark theme: the terminal's own, painted under nothing else.
+const DARK_BACKGROUND = 'transparent'
 // Read and written only in this file: the state library lists a module's values from the
 // atoms each file names.
 const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-5' })
@@ -49,9 +49,9 @@ export function resetDoc(): void {
 
 type Opened = { label: string } | { error: string }
 
-// The pane's background: in a dark theme a gray a little above black, since the engine's own
-// there is the palette's bright black in the ANSI themes (#555555 in many), which washes out
-// light text; in any other theme the engine's own.
+// The pane's background: in a dark theme the terminal's, as the transcript beside it has, since
+// the engine's own there is the palette's bright black in the ANSI themes (#555555 in many),
+// which washes out light text; in any other theme the engine's own.
 async function background($: Api): Promise<string | undefined> {
   const rows = await $.config.list().catch(() => [])
   const theme = rows.find(row => row.key === 'theme')?.value
