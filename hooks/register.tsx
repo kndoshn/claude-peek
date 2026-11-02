@@ -3,7 +3,7 @@ import type { PluginOptions, Register } from 'claude-code'
 import { forget, offerNamed, openAnew, PANE, rebase, refresh, resetDoc } from './doc'
 import { candidates, existing, recentMessages, resetFiles, resolveArg, where } from './files'
 import { configureLanguage, messages } from './messages'
-import { basename, rank } from './paths'
+import { rank, suggestion } from './paths'
 import { drawBand, drawPane } from './ui'
 
 // md-review: read a Markdown file rendered in a pane beside the chat and quote passages of it
@@ -59,7 +59,7 @@ export const register: Register = (on, options: PluginOptions) => {
     try {
       const mine = rank(e.token, await candidates($, await where($), false))
         .slice(0, MAX_SUGGESTIONS)
-        .map(label => ({ text: label, label: basename(label), description: label }))
+        .map(suggestion)
 
       return { suggestions: [...base.suggestions, ...mine] }
     } catch {

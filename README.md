@@ -30,7 +30,8 @@ md-review is a hooks module (a mod) and needs a Claude Code build that loads the
 with Claude Code 2.1.316. Quoting reads the mouse selection, which Claude Code reports in the
 fullscreen terminal. The pane docks beside the transcript from 110 columns, 100 columns wide (at
 most 45% of the terminal; a width you drag it to wins), and below that sits above the prompt, as
-tall as the file up to what the screen spares.
+tall as the file up to what the screen spares. In a dark theme its background is a gray a little
+above black, so light text stays readable in the ANSI themes too.
 
 ## Use
 

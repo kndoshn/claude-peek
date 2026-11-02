@@ -32,6 +32,7 @@ function engine(on: On, files: Files, messages: Message[] = []) {
     opened: [] as string[],
     escapes: [] as (boolean | undefined)[],
     sizes: [] as { columns?: number; rows?: number }[],
+    backgrounds: [] as (string | undefined)[],
     closed: [] as string[],
     filled: [] as { text: string; mode?: string }[],
     toasts: [] as string[],
@@ -50,6 +51,7 @@ function engine(on: On, files: Files, messages: Message[] = []) {
     record.opened.push(e.title ?? e.id)
     record.escapes.push(e.closeOnEscape)
     record.sizes.push({ columns: e.columns, rows: e.rows })
+    record.backgrounds.push(e.backgroundColor)
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_, e) => {
@@ -717,4 +719,27 @@ test('the pane asks for a width to read in, and inline for the height of the fil
     { columns: 100, rows: 4 },
     { columns: 100, rows: 302 },
   ])
+})
+
+test('a suggestion shows the file name, and beside it the folder when there is one', async ($, on) => {
+  const r = engine(on, {})
+  tracked(r, 'README.md', 'docs/README.md')
+
+  const result = await autocomplete($, { text: '/md READ', cursor: 8, token: 'READ', start: 4 })
+  expect(result.suggestions).toEqual([
+    { text: 'README.md', label: 'README.md' },
+    { text: 'docs/README.md', label: 'README.md', description: 'docs' },
+  ])
+})
+
+test('in a dark theme the pane is painted a little above black, in a light one as the theme has it', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a' })
+  r.config = [{ key: 'theme', value: 'dark-ansi' }]
+  await md($, 'a.md')
+  r.config = [{ key: 'theme', value: 'light' }]
+  await md($, 'a.md')
+  r.config = []
+  await md($, 'a.md')
+
+  expect(r.backgrounds).toEqual(['rgb(28, 28, 28)', undefined, undefined])
 })

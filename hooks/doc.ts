@@ -19,6 +19,8 @@ export const PANE = 'md-review'
 const READING_COLUMNS = 100
 // The pane's header line and the gap under it.
 const HEADER_ROWS = 2
+// The pane's background in a dark theme.
+const DARK_BACKGROUND = 'rgb(28, 28, 28)'
 // Read and written only in this file: the state library lists a module's values from the
 // atoms each file names.
 const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-5' })
@@ -47,6 +49,15 @@ export function resetDoc(): void {
 
 type Opened = { label: string } | { error: string }
 
+// The pane's background: in a dark theme a gray a little above black, since the engine's own
+// there is the palette's bright black in the ANSI themes (#555555 in many), which washes out
+// light text; in any other theme the engine's own.
+async function background($: Api): Promise<string | undefined> {
+  const rows = await $.config.list().catch(() => [])
+  const theme = rows.find(row => row.key === 'theme')?.value
+  return typeof theme === 'string' && theme.startsWith('dark') ? DARK_BACKGROUND : undefined
+}
+
 // Shows `path` in the pane, its Back list made by `back` from what was shown. The same file
 // shown again keeps its base and view; another starts rendered, its text as read the base.
 async function show($: Api, say: Messages, path: string, back: (shown: Doc | null) => string[]): Promise<Opened> {
@@ -66,6 +77,7 @@ async function show($: Api, say: Messages, path: string, back: (shown: Doc | nul
     }
   })
   await update($, offer, offered => (offered?.path === path ? null : offered))
+  const backgroundColor = await background($)
   await $.ui.open({
     id: PANE,
     title: basename(path),
@@ -77,6 +89,7 @@ async function show($: Api, say: Messages, path: string, back: (shown: Doc | nul
     // Inline above the prompt: the file's height with its header, up to what the layout
     // spares, rather than a third of the screen.
     rows: lines(loaded.text).length + HEADER_ROWS,
+    ...(backgroundColor ? { backgroundColor } : {}),
   })
   return { label: file.label }
 }

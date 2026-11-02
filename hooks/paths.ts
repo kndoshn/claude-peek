@@ -59,6 +59,13 @@ export function named(message: SessionMessage): string[] {
   return found.reverse()
 }
 
+// A completion row for a label: the file name, and beside it the folder when it has one.
+export function suggestion(label: string): { text: string; label: string; description?: string } {
+  const slash = label.lastIndexOf('/')
+  if (slash < 0) return { text: label, label }
+  return { text: label, label: label.slice(slash + 1), description: label.slice(0, slash) || '/' }
+}
+
 // Whether every character of `query` appears in `text` in order, ignoring case.
 function fuzzy(query: string, text: string): boolean {
   const haystack = text.toLowerCase()
