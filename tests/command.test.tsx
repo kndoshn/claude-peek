@@ -272,3 +272,19 @@ test('the pane left for another view while the command ran stays there when it e
   expect((await pane($)).markdown?.text).toBe('a')
   expect(r.opened).toEqual(['$ make', 'a.md'])
 })
+
+test('a command that ends while another tab is in front fits the pane without bringing it forward', async ($, on) => {
+  const r = engine(on, {})
+  let finish: (run: Run) => void = () => undefined
+  r.commands['/bin/sh'] = () => new Promise<Run>(resolve => (finish = resolve))
+  const ran = peek($, '!make')
+  await until(() => r.opened.length === 1)
+
+  r.isShown = false
+  finish({ exitCode: 0, stdout: 'a\nb\n' })
+  await ran
+  expect(r.opens.map(open => [open.rows, open.focus])).toEqual([
+    [2 + 1, undefined],
+    [2 + 2, undefined],
+  ])
+})

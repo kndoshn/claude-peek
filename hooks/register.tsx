@@ -4,7 +4,7 @@ import { candidates, recentMessages, existing, resetFind, resolvePlace, where } 
 import type { Kind } from './find'
 import { configureLanguage, messages } from './messages'
 import type { Messages } from './messages'
-import { closePane, forgetPane, isPaneShown, navigate, navState, openView, PANE, refit, reopen } from './nav'
+import { closePane, forgetPane, isPaneShown, navigate, navState, noteBehind, openView, PANE, refit, reopen } from './nav'
 import { rank, suggestion } from './pure/paths'
 import { parseTarget } from './pure/target'
 import { drawBand } from './ui/band'
@@ -32,9 +32,11 @@ const MAX_SUGGESTIONS = 10
 // The tools whose calls may change files.
 const CHANGING_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 
-// Every tick: the file open is checked for changes on disk; the tree or Git is read again when
-// due, only while the pane is in sight, as nobody sees it otherwise.
+// Every tick: whether another tab hides the pane is noted for the band; the file open is checked
+// for changes on disk; the tree or Git is read again when due, only while the pane is in sight,
+// as nobody sees it otherwise.
 async function watch($: Api): Promise<void> {
+  await noteBehind($)
   const view = await openView($)
   if (view === 'file') await refreshFile($)
   if (view !== 'tree' && view !== 'git') return

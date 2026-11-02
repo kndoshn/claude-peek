@@ -116,7 +116,10 @@ export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<R
   if (e.props.hasSurvey || (!isOpen && !offered)) return undefined
   const { Box, Button, Text } = $.ui.resolve(e)
   const say = await messages($)
-  const buttons = view === null ? [] : await viewButtons($, e, say, view)
+  // While another tab is in front of the pane, what acts on the view shown is left out; the
+  // views bring the pane back, and a selection there is quoted without a heading.
+  const isBehind = state.isBehind === true
+  const buttons = view === null || isBehind ? [] : await viewButtons($, e, say, view)
 
   const openOffered = async () => {
     if (!offered) return
@@ -139,7 +142,7 @@ export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<R
       {isOpen && <Text dimColor>│</Text>}
       {isOpen && <Button key="quote" label={say.quote} hotkey="q" variant="primary" onPress={() => quoteSelection($, say)} />}
       {isOpen && buttons}
-      {isOpen && state.back.length > 0 && <Button key="back" label={say.back} hotkey="b" onPress={() => goBack($, say)} />}
+      {isOpen && !isBehind && state.back.length > 0 && <Button key="back" label={say.back} hotkey="b" onPress={() => goBack($, say)} />}
       {isOpen && <Button key="close" label={say.close} dimColor onPress={() => closePane($)} />}
       {offered && <Button key="offer" label={say.open(offered.label)} hotkey="o" onPress={openOffered} />}
       {offered && <Button key="dismiss" label={say.dismiss} dimColor onPress={() => dismissOffer($)} />}

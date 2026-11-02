@@ -14,7 +14,9 @@ export type Location =
 
 // The pane: whether it is open, the view it shows, and the places a link or a click was
 // followed from, the last one last.
-export type Nav = { isOpen: boolean; view: ViewName | null; back: Location[] }
+// Whether the pane is open, the view it shows, where Back returns, and whether another tab is
+// shown in front of it.
+export type Nav = { isOpen: boolean; view: ViewName | null; back: Location[]; isBehind?: boolean }
 
 // How the file view draws the file: rendered (Markdown only), as written with line numbers, or
 // the changes since the person's last message.

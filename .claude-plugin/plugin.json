@@ -1,6 +1,6 @@
 {
   "name": "peek",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "description": "Peek at files, folders, Git and command output beside the chat in Claude Code, and quote what you need into the prompt with where it came from",
   "author": {
     "name": "kndoshn",

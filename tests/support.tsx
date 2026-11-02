@@ -68,6 +68,8 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
   on('ui.open', (_, e) => {
     record.opened.push(e.title ?? e.id)
     record.opens.push(e)
+    // An open that takes the focus shows the pane in front of the other tabs.
+    if (e.focus) record.isShown = true
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_, e) => {

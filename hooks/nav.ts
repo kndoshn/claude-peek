@@ -2,7 +2,7 @@
 // a view, and Back across views.
 
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import type { EngineInterface, PaneOpenArgs } from 'claude-code'
 
 import type { Location, Nav, ViewName } from '../types'
 import { where } from './find'
@@ -73,13 +73,22 @@ async function background($: Api): Promise<string | undefined> {
   return typeof theme === 'string' && theme.startsWith('dark') ? DARK_BACKGROUND : undefined
 }
 
+// How long a pane brought in front takes to be laid out there, found by trying in Claude Code
+// 2.1.316.
+const LAYOUT_MS = 100
+
 // The rows the pane was last opened with, so fitting it again asks only for a change.
 let openedRows: number | undefined
 
-async function openPane($: Api, opened: Exclude<Opened, { error: string }>): Promise<void> {
+// Opens the pane, or redraws it open. Unless `toFront` is false, a pane behind another tab is
+// brought in front: an open alone only retitles it there, so a command or a press would seem to
+// do nothing, and an open that takes the focus is what shows it. That open resolves before the
+// pane is laid out in front, where a scroll at once is lost, so the scroll waits a moment. A pane
+// in sight is left the focus it has, so the prompt keeps the keys.
+async function openPane($: Api, opened: Exclude<Opened, { error: string }>, toFront = true): Promise<void> {
   const backgroundColor = await background($)
   openedRows = opened.lines + HEADER_ROWS
-  await $.ui.open({
+  const pane: PaneOpenArgs = {
     id: PANE,
     // A file's or a folder's name may hold a control character, which a title refuses.
     title: visible(opened.title),
@@ -92,7 +101,10 @@ async function openPane($: Api, opened: Exclude<Opened, { error: string }>): Pro
     // than a third of the screen.
     rows: opened.lines + HEADER_ROWS,
     ...(backgroundColor ? { backgroundColor } : {}),
-  })
+  }
+  const isBehind = toFront && (await isPaneBehind($))
+  await $.ui.open(isBehind ? { ...pane, focus: true } : pane)
+  if (isBehind && opened.scrollKey) await $.clock.sleep(LAYOUT_MS)
   // The open resolves once the pane is drawn, so the element is there to scroll to.
   if (opened.scrollKey) await $.ui.scroll({ to: { key: opened.scrollKey }, in: PANE, block: 'start' }).catch(() => undefined)
 }
@@ -108,6 +120,7 @@ export async function navigate($: Api, say: Messages, to: Location, how: 'anew' 
     isOpen: true,
     view: to.view,
     back: how === 'anew' ? [] : from ? [...current.back, from] : current.back,
+    isBehind: false,
   }))
   await openPane($, opened)
   return opened
@@ -165,16 +178,17 @@ export async function switchView($: Api, say: Messages, view: ViewName): Promise
     $.ui.toast(opened.error)
     return
   }
-  await update($, nav, current => ({ ...current, isOpen: true, view }))
+  await update($, nav, current => ({ ...current, isOpen: true, view, isBehind: false }))
   await openPane($, opened)
 }
 
-// Fits the pane to what `view` shows now (a command that ended), while the pane is open on it.
+// Fits the pane to what `view` shows now (a command that ended), while the pane is open on it,
+// leaving it behind any tab the person brought in front meanwhile.
 export async function refit($: Api, say: Messages, view: ViewName): Promise<void> {
   if ((await openView($)) !== view) return
   const to = await here($, view)
   const opened = to ? await load($, say, to, 'place') : undefined
-  if (opened && !('error' in opened) && opened.lines + HEADER_ROWS !== openedRows) await openPane($, opened)
+  if (opened && !('error' in opened) && opened.lines + HEADER_ROWS !== openedRows) await openPane($, opened, false)
 }
 
 // The view the pane is open on, or null while it is closed.
@@ -185,13 +199,27 @@ export async function openView($: Api): Promise<ViewName | null> {
 
 // Whether a surface shows the pane now: not while another tab stands in front of it or it waits
 // undrawn. Shown when the engine cannot say.
+// Whether the pane is open behind another tab.
+async function isPaneBehind($: Api): Promise<boolean> {
+  const panes = await $.ui.panes().catch(() => undefined)
+  return panes !== undefined && panes.some(pane => pane.id === PANE && !pane.isShown)
+}
+
 export async function isPaneShown($: Api): Promise<boolean> {
   const panes = await $.ui.panes().catch(() => undefined)
   return panes === undefined || panes.some(pane => pane.id === PANE && pane.isShown)
 }
 
+// Notes whether another tab is shown in front of the open pane, for the band. Checked on the
+// watch's tick, as no event tells when the person switches tabs.
+export async function noteBehind($: Api): Promise<void> {
+  const state = await read($, nav)
+  const isBehind = state.isOpen && (await isPaneBehind($))
+  if (isBehind !== (state.isBehind ?? false)) await update($, nav, current => ({ ...current, isBehind }))
+}
+
 export async function closePane($: Api): Promise<void> {
-  await update($, nav, current => ({ ...current, isOpen: false, back: [] }))
+  await update($, nav, current => ({ ...current, isOpen: false, back: [], isBehind: false }))
   await $.ui.close({ id: PANE })
 }
 

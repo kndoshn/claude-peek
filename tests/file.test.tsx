@@ -474,6 +474,47 @@ test('a link to a file that does not exist says so and stays', async ($, on) => 
   expect(await button($, 'back')).toBeUndefined()
 })
 
+test('while another tab is shown in front of the pane, the band keeps the views, quoting and Close, and drops what acts on the view', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a' })
+  await start($)
+  await md($, 'a.md')
+  expect(await button($, 'source')).toBe('Source')
+
+  r.isShown = false
+  await r.clock.advance(1000)
+  expect(await button($, 'source')).toBeUndefined()
+  expect(await button($, 'view:file')).toBe('File')
+  expect(await button($, 'quote')).toBe('Quote selection')
+  expect(await button($, 'close')).toBe('Close')
+
+  r.isShown = true
+  await r.clock.advance(1000)
+  expect(await button($, 'source')).toBe('Source')
+})
+
+test('a command or a view button brings the pane in front of another tab; only then does the open take the focus', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a', '/proj/b.md': 'b' })
+  await md($, 'a.md')
+  expect(r.opens.at(-1)?.focus).toBeUndefined()
+
+  // Brought in front, the pane is given a moment to be laid out there before the scroll.
+  const settled = async (step: Promise<unknown>) => {
+    let done = false
+    void step.then(() => (done = true))
+    for (let i = 0; i < 100 && !done; i += 1) await r.clock.advance(50)
+    expect(done).toBe(true)
+  }
+  r.isShown = false
+  await settled(md($, 'b.md'))
+  expect(r.opens.at(-1)?.focus).toBe(true)
+  r.isShown = false
+  await settled(press($, 'view:file'))
+  expect(r.opens.at(-1)?.focus).toBe(true)
+  r.isShown = false
+  await settled(peek($))
+  expect(r.opens.at(-1)?.focus).toBe(true)
+})
+
 test('front matter is drawn as a YAML block', async ($, on) => {
   engine(on, { '/proj/SKILL.md': '---\nname: x\n---\n# X\n' })
   await md($, 'SKILL.md')

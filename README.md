@@ -175,6 +175,8 @@ heading.
   content up to what the screen spares.
 - In a dark theme it takes the terminal's background, as the transcript does, so light text stays
   readable in the ANSI themes too.
+- Behind another tab, such as `/diff`'s, it comes to the front when `/peek` or the band opens a view.
+  Meanwhile the band holds only the views, **Quote selection** and **Close**.
 - It closes with **Close**, its close mark, or Esc while it has the focus or the prompt is empty and
   Claude is idle. `/clear` and resuming another conversation close it too, as peek starts over in
   the next conversation.
