@@ -90,6 +90,8 @@ installed.
 
 ## Develop
 
+The design is in [docs/design.md](docs/design.md), written in Japanese.
+
 ```
 claude --plugin-dir .            # run a session with this folder loaded; saving a file reloads it
 claude plugin test .             # run tests/*.test.tsx against the engine

@@ -86,6 +86,8 @@ YAML のブロックとして表示します。長すぎるファイルは途中
 
 ## 開発
 
+設計は [docs/design.md](docs/design.md) にあります。
+
 ```
 claude --plugin-dir .            # このフォルダを読み込んでセッションを始める。保存すると読み直す
 claude plugin test .             # tests/*.test.tsx を実行する
