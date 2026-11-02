@@ -28,8 +28,9 @@ Add marketplace with `kndoshn/md-review`, then Add plugin.
 
 md-review is a hooks module (a mod) and needs a Claude Code build that loads them; it is tested
 with Claude Code 2.1.316. Quoting reads the mouse selection, which Claude Code reports in the
-fullscreen terminal. The pane docks beside the transcript from 110 columns and sits above the
-prompt below that.
+fullscreen terminal. The pane docks beside the transcript from 110 columns, 100 columns wide (at
+most 45% of the terminal; a width you drag it to wins), and below that sits above the prompt, as
+tall as the file up to what the screen spares.
 
 ## Use
 

@@ -31,6 +31,7 @@ function engine(on: On, files: Files, messages: Message[] = []) {
     clock: mock.clock(on),
     opened: [] as string[],
     escapes: [] as (boolean | undefined)[],
+    sizes: [] as { columns?: number; rows?: number }[],
     closed: [] as string[],
     filled: [] as { text: string; mode?: string }[],
     toasts: [] as string[],
@@ -48,6 +49,7 @@ function engine(on: On, files: Files, messages: Message[] = []) {
   on('ui.open', (_, e) => {
     record.opened.push(e.title ?? e.id)
     record.escapes.push(e.closeOnEscape)
+    record.sizes.push({ columns: e.columns, rows: e.rows })
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_, e) => {
@@ -704,4 +706,15 @@ test('Escape closes the pane, from the pane or an idle empty prompt', async ($, 
   await ui.unmount()
   // Each open sets it anew, so every open asks for it.
   expect(r.escapes).toEqual([true, true])
+})
+
+test('the pane asks for a width to read in, and inline for the height of the file', async ($, on) => {
+  const r = engine(on, { '/proj/short.md': 'one\ntwo\n', '/proj/long.md': 'x\n'.repeat(300) })
+  await md($, 'short.md')
+  await md($, 'long.md')
+
+  expect(r.sizes).toEqual([
+    { columns: 100, rows: 4 },
+    { columns: 100, rows: 302 },
+  ])
 })

@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Doc, MdFile, View } from '../types'
-import { diff } from './diff'
+import { diff, lines } from './diff'
 import type { Change } from './diff'
 import { existing, load, mtime, recentMessages, sinceLastPrompt, where } from './files'
 import type { Messages } from './messages'
@@ -15,6 +15,10 @@ import { cite, locate, quote, ungutter } from './quote'
 type Api = EngineInterface
 
 export const PANE = 'md-review'
+// The width the docked pane asks for.
+const READING_COLUMNS = 100
+// The pane's header line and the gap under it.
+const HEADER_ROWS = 2
 // Read and written only in this file: the state library lists a module's values from the
 // atoms each file names.
 const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-5' })
@@ -62,8 +66,18 @@ async function show($: Api, say: Messages, path: string, back: (shown: Doc | nul
     }
   })
   await update($, offer, offered => (offered?.path === path ? null : offered))
-  // Escape closes it, from the pane or an idle, empty prompt.
-  await $.ui.open({ id: PANE, title: basename(path), closeOnEscape: true })
+  await $.ui.open({
+    id: PANE,
+    title: basename(path),
+    // Escape closes it, from the pane or an idle, empty prompt.
+    closeOnEscape: true,
+    // Docked beside the transcript: a width to read prose and tables in (the engine caps it
+    // at 45% of the terminal, and a width the person set wins).
+    columns: READING_COLUMNS,
+    // Inline above the prompt: the file's height with its header, up to what the layout
+    // spares, rather than a third of the screen.
+    rows: lines(loaded.text).length + HEADER_ROWS,
+  })
   return { label: file.label }
 }
 
