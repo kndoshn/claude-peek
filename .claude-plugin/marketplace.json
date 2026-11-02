@@ -1,11 +1,13 @@
 {
-  "name": "md-review",
-  "owner": { "name": "kndoshn" },
+  "name": "claude-peek",
+  "owner": {
+    "name": "kndoshn"
+  },
   "plugins": [
     {
-      "name": "md-review",
+      "name": "peek",
       "source": "./",
-      "description": "Read a Markdown file in a pane beside the chat and quote selected passages, with their line numbers, into the prompt"
+      "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt"
     }
   ]
 }

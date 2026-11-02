@@ -3,15 +3,23 @@
 
 import type { SessionMessage } from 'claude-code'
 
-import type { MdFile } from '../types'
+import type { MdFile } from '../../types'
 
 // Where relative and ~/ paths start.
 export type Where = { cwd: string; home: string | undefined }
 
 export const MARKDOWN = /\.(md|markdown)$/i
-// A path ending in .md inside a reply, stopping at spaces, quotes, backticks and brackets.
-const PATH_IN_TEXT = /[^\s`'"()<>[\]{}|,]+\.(?:md|markdown)(?![\w/])/gi
-const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'Read'])
+// A file's path inside a reply: up to spaces, quotes, backticks and brackets, with an extension
+// that starts with a letter (so a version such as v1.2 is not one) and maybe `:12` or `:12-14`.
+const PATH_IN_TEXT = /[^\s`'"()<>[\]{}|,]+\.[A-Za-z][A-Za-z0-9]{0,9}(?::\d+(?:-\d+)?)?(?![\w/])/g
+// The tools whose input names a file, and the field that names it.
+const FILE_TOOLS: Readonly<Record<string, string>> = {
+  Read: 'file_path',
+  Write: 'file_path',
+  Edit: 'file_path',
+  MultiEdit: 'file_path',
+  NotebookEdit: 'notebook_path',
+}
 
 export function basename(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1)
@@ -47,15 +55,18 @@ export function describe(at: Where, path: string): MdFile {
   return { path, label: path }
 }
 
-// The .md files a reply named, the last named first: the file_path of its file tools, then the
-// paths in its text.
+// The files a reply named, the last named first: those its file tools took, then the paths in
+// its text, each without the lines after it. URLs are not files.
 export function named(message: SessionMessage): string[] {
   const found: string[] = []
   for (const use of message.toolUses) {
-    const path = use.input.file_path
-    if (FILE_TOOLS.has(use.tool) && typeof path === 'string' && MARKDOWN.test(path)) found.push(path)
+    const field = FILE_TOOLS[use.tool]
+    const path = field ? use.input[field] : undefined
+    if (typeof path === 'string') found.push(path)
   }
-  found.push(...(message.text.match(PATH_IN_TEXT) ?? []))
+  for (const token of message.text.match(PATH_IN_TEXT) ?? []) {
+    if (!token.includes('://')) found.push(token.replace(/:\d+(?:-\d+)?$/, ''))
+  }
   return found.reverse()
 }
 

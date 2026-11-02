@@ -1,10 +1,11 @@
 import { expect, test } from 'claude-code/testing'
 
-import { diff, hunks } from '../hooks/diff'
-import { clip, frontMatter, linkify } from '../hooks/markdown'
-import { absolute, describe, dirname, named, normalize, rank } from '../hooks/paths'
-import { cite, locate, quote, ungutter } from '../hooks/quote'
-import type { Change } from '../hooks/diff'
+import { diff, hunks } from '../hooks/pure/diff'
+import { clip, frontMatter, linkify } from '../hooks/pure/markdown'
+import { absolute, describe, dirname, named, normalize, rank } from '../hooks/pure/paths'
+import { cite, locate, quote, ungutter } from '../hooks/pure/quote'
+import { parseTarget } from '../hooks/pure/target'
+import type { Change } from '../hooks/pure/diff'
 
 // A small deterministic generator, so a failure repeats.
 function random(seed: number): () => number {
@@ -98,16 +99,19 @@ test('a path is labelled from the working directory, else from the home, else in
   expect(describe(at, '/project/d.md').label).toBe('/project/d.md')
 })
 
-test('a reply names .md files by its file tools and in its text, the last named first', () => {
+test('a reply names files by its file tools and in its text, the last named first', () => {
   const message = {
     role: 'assistant' as const,
-    text: 'See `docs/a.md`, https://example.com/x.mdx and (b.markdown).',
+    text: 'See `docs/a.md`, src/b.ts:12-14 and (c.markdown), e.g. v1.2 at https://example.com/x.html.',
     toolUses: [
       { tool_use_id: '1', tool: 'Write', input: { file_path: '/p/w.md' } },
-      { tool_use_id: '2', tool: 'Bash', input: { command: 'cat z.md' } },
+      { tool_use_id: '2', tool: 'Read', input: { file_path: '/p/r.json' } },
+      { tool_use_id: '3', tool: 'Bash', input: { command: 'cat z.md' } },
     ],
   }
-  expect(named(message)).toEqual(['b.markdown', 'docs/a.md', '/p/w.md'])
+  // A URL and a version are not files; words that only look like one (e.g) are dropped later,
+  // when they are not on disk.
+  expect(named(message)).toEqual(['e.g', 'c.markdown', 'src/b.ts', 'docs/a.md', '/p/r.json', '/p/w.md'])
 })
 
 test('ranking puts a name match before a path match before loose ones, and drops the rest', () => {
@@ -156,4 +160,16 @@ test('links inside code, images and other targets stay as written', () => {
   const { text, links } = linkify(source, '/r')
   expect(text).toBe('```\n[a](a.md)\n```\n`[b](b.md)` ![c](c.md) [d](#d) [e](/e.md) [f](f.txt) [g](file:///r/g.md)')
   expect([...links.keys()]).toEqual(['file:///r/g.md'])
+})
+
+test('a /peek argument is a command, git, or a path with an optional line or range', () => {
+  expect(parseTarget('')).toEqual({ kind: 'empty' })
+  expect(parseTarget('  !ls -la ')).toEqual({ kind: 'command', command: 'ls -la' })
+  expect(parseTarget('!')).toEqual({ kind: 'empty' })
+  expect(parseTarget('git')).toEqual({ kind: 'git' })
+  expect(parseTarget('gitignore')).toEqual({ kind: 'path', path: 'gitignore' })
+  expect(parseTarget('src/a.ts')).toEqual({ kind: 'path', path: 'src/a.ts' })
+  expect(parseTarget('src/a.ts:12')).toEqual({ kind: 'path', path: 'src/a.ts', lines: [12, 12] })
+  expect(parseTarget('src/a.ts:14-12')).toEqual({ kind: 'path', path: 'src/a.ts', lines: [12, 14] })
+  expect(parseTarget('src/a.ts:0')).toEqual({ kind: 'path', path: 'src/a.ts:0' })
 })

@@ -1,16 +1,26 @@
 {
-  "name": "md-review",
-  "version": "0.4.0",
-  "description": "Read a Markdown file in a pane beside the chat and quote selected passages, with their line numbers, into the prompt",
+  "name": "peek",
+  "version": "0.5.0",
+  "description": "Peek at files beside the chat in Claude Code and quote what you need, with its file and lines, into the prompt",
   "license": "MIT",
-  "keywords": ["markdown", "review", "pane", "mod"],
+  "keywords": [
+    "markdown",
+    "review",
+    "pane",
+    "quote",
+    "mod"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "language": {
       "type": "string",
       "title": "Language",
       "description": "The language of md-review's messages and buttons. auto follows Claude Code's language setting, then the locale.",
-      "options": ["auto", "en", "ja"],
+      "options": [
+        "auto",
+        "en",
+        "ja"
+      ],
       "default": "auto"
     }
   }

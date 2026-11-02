@@ -1,28 +1,44 @@
-// A Markdown file by its absolute path and the label shown for it: relative to the working
-// directory inside it, from the home with ~/ elsewhere.
+// A file by its absolute path and the label shown for it: relative to the working directory
+// inside it, from the home with ~/ elsewhere.
 export type MdFile = { path: string; label: string }
-// How the pane draws the file: rendered, as written with line numbers, or the changes since
-// the person's last message.
-export type View = 'rendered' | 'source' | 'changes'
-// The file the pane shows, kept as one value so that each step (open, follow a link, go back,
-// a change on disk) redraws once: the text last read and its modification time then, the text
-// as it stood at the person's last message (what the changes view compares with), whether the
-// file has since gone from the disk, the view, and the files a link was followed from, the
-// last one last.
-export type Doc = MdFile & {
+
+// What the pane can show, one view at a time.
+export type ViewName = 'file' | 'tree' | 'git' | 'command'
+
+// A place in a view, which Back returns to.
+export type Location =
+  | { view: 'file'; path: string; lines?: [number, number] }
+  | { view: 'tree'; root: string }
+  | { view: 'git'; commit?: string }
+  | { view: 'command' }
+
+// The pane: whether it is open, the view it shows, and the places a link or a click was
+// followed from, the last one last.
+export type Nav = { isOpen: boolean; view: ViewName | null; back: Location[] }
+
+// How the file view draws the file: rendered (Markdown only), as written with line numbers, or
+// the changes since the person's last message.
+export type FileMode = 'rendered' | 'source' | 'changes'
+
+// The file the file view shows: the text last read and its modification time then, the text as
+// it stood at the person's last message (what the changes view compares with), whether the file
+// has since gone from the disk, the mode, and the lines it was opened at.
+export type FileDoc = MdFile & {
   text: string
   mtimeMs: number
   base: string
   isDeleted: boolean
-  view: View
-  back: string[]
+  isMarkdown: boolean
+  mode: FileMode
+  lines?: [number, number]
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    'md-review': {
-      doc: Shaped<Doc | null>
-      // The file the last reply named, offered in the band until opened or dismissed.
+    peek: {
+      nav: Shaped<Nav>
+      file: Shaped<FileDoc | null>
+      // The .md the last reply named, offered in the band until opened or dismissed.
       offer: Shaped<MdFile | null>
     }
   }

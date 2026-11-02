@@ -1,9 +1,10 @@
-# md-review
+# claude-peek
 
-A Claude Code mod for reviewing the Markdown files Claude writes, without leaving the session.
-`/md` opens a file rendered in a pane beside the chat; select a passage with the mouse and press
-**Quote selection** to put it into your prompt as a quote headed by the file and its line
-numbers. No other tab, editor or browser.
+An unofficial Claude Code mod for looking at things beside the chat and handing Claude only the
+part you need. `/peek` opens a file in a pane beside the conversation; select a passage with the
+mouse and press **Quote selection** to put it into your prompt, headed by where it came from
+(`src/a.ts:118-125`). What you look at stays out of the conversation: only what you quote
+reaches Claude. No other tab, editor or browser.
 
 [日本語](README.ja.md)
 
@@ -12,7 +13,7 @@ numbers. No other tab, editor or browser.
 At the prompt of a Claude Code terminal session:
 
 ```
-/plugin install md-review --marketplace kndoshn/md-review
+/plugin install peek --marketplace kndoshn/claude-peek
 ```
 
 Answer `y` to add the marketplace, then choose a scope (the user scope comes first).
@@ -20,36 +21,40 @@ Answer `y` to add the marketplace, then choose a scope (the user scope comes fir
 From a shell:
 
 ```
-claude plugin install md-review --marketplace kndoshn/md-review
+claude plugin install peek --marketplace kndoshn/claude-peek
 ```
 
 In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins,
-Add marketplace with `kndoshn/md-review`, then Add plugin.
+Add marketplace with `kndoshn/claude-peek`, then Add plugin.
 
-md-review is a hooks module (a mod) and needs a Claude Code build that loads them; it is tested
-with Claude Code 2.1.316. Quoting reads the mouse selection, which Claude Code reports in the
+peek is a hooks module (a mod) and needs a Claude Code build that loads them; it is tested with
+Claude Code 2.1.316. Quoting reads the mouse selection, which Claude Code reports in the
 fullscreen terminal. The pane docks beside the transcript from 110 columns, 100 columns wide (at
 most 45% of the terminal; a width you drag it to wins), and below that sits above the prompt, as
-tall as the file up to what the screen spares. In a dark theme it takes the terminal's background, as
-the transcript does, so light text stays readable in the ANSI themes too.
+tall as its content up to what the screen spares. In a dark theme it takes the terminal's
+background, as the transcript does, so light text stays readable in the ANSI themes too.
 
 ## Use
 
-| You do | md-review |
+| You type | peek |
 | --- | --- |
-| `/md` | opens the newest `.md` Claude wrote, edited, read or named in the recent conversation |
-| `/md docs/plan.md` | opens that file: relative to the working directory, `~/...` or absolute |
-| `/md plan` | opens the best match for part of a name: the conversation's files, then the project's |
-| typing `/md pl` | completes to matching Markdown files |
+| `/peek src/a.ts` | opens the file: relative to the working directory, `~/...` or absolute |
+| `/peek src/a.ts:120` or `:120-130` | opens the source at those lines, marked, scrolled to them |
+| `/peek reg` | opens the best match for part of a name: the files the conversation named, then the project's |
+| `/peek` | opens the pane again where it was; the first time, the newest file the conversation named |
+| `/md [path or name]` | the same for Markdown only; without a name, the newest `.md` Claude named |
+| typing `/peek re` | completes to matching files, with their folder beside them |
 | a reply names a `.md` | offers **Open docs/plan.md** above the prompt; **×** dismisses it |
 
-The pane is headed by the file, its line count and the view. It checks the file every second
-and redraws when it changed on disk, whether Claude, your editor or a script changed it; a file
-deleted on disk stays shown, marked as deleted. A relative link to another Markdown file
-(`[setup](../setup.md)`) opens that file in the pane when clicked. Front matter is drawn as a
-YAML block. A file too long to draw is cut, and the header says so.
+Markdown is rendered; any other text file shows as source with line numbers, coloured by its
+language. Binary files and files over 4 MiB do not open. The pane is headed by the file, its line
+count and the view; a file too long to draw is cut, and the header says so. The pane checks the
+file every second and redraws when it changed on disk, whether Claude, your editor or a script
+changed it; a file deleted on disk stays shown, marked as deleted. A relative link to another
+Markdown file (`[setup](../setup.md)`, `[setup][ref]`, `[a](<my notes.md>)`) opens that file in
+the pane when clicked. Front matter is drawn as a YAML block.
 
-While a file is open, a row above the prompt has:
+While the pane is open, a row above the prompt has:
 
 - **Quote selection**: appends the passage you selected in the pane to your draft:
 
@@ -62,27 +67,28 @@ While a file is open, a row above the prompt has:
 
   The line numbers come from finding the selected text in the file's source, or from the line
   numbers of the source view when the selection carries them. When the text cannot be found (a
-  passage drawn from an image's alt text, say), the quote is headed by the file alone.
-- **Source** / **Rendered**: switches between the rendered file and the file as written, with
-  line numbers.
+  passage drawn from an image's alt text, say), the quote is headed by the file alone. A passage
+  selected in the conversation is quoted without a heading.
+- **Source** / **Rendered** (Markdown): switches between the rendered file and the file as
+  written, with line numbers.
 - **Changes +3 −1**: shows what changed in the file since your last message, as a diff. It
   appears once the file changed; your next message starts the count again. **Hide changes**
   returns to the file. Past about 1000 changed lines, the changed part is shown as replaced
   whole.
+- **@ path**: appends the file as an `@` mention, so Claude reads it.
 - **← Back**: returns to the file you followed a link from.
 - **Close**: closes the pane. So do the pane's close mark, and Esc while the pane has the focus or
   the prompt is empty and Claude is idle.
 
 Click a button, or focus the row (ctrl+x tab, or a click) and press its letter: `q` quote, `s`
-source, `d` changes, `b` back, `o` open the offered file.
+source, `d` changes, `a` @ path, `b` back, `o` open the offered file.
 
-Only `.md` and `.markdown` files open. The project's files are those `git ls-files` lists
-(tracked and untracked, not ignored); outside a git repository, those `fd` lists, if it is
-installed.
+The project's files are those `git ls-files` lists (tracked and untracked, not ignored); outside
+a git repository, those `fd` lists, if it is installed.
 
 ## Settings
 
-`/config` has one row for md-review:
+`/config` has one row for peek:
 
 | Setting | Values | Default |
 | --- | --- | --- |
@@ -94,19 +100,21 @@ The design is in [docs/design.md](docs/design.md), written in Japanese.
 
 ```
 claude --plugin-dir .            # run a session with this folder loaded; saving a file reloads it
-claude plugin test .             # run tests/*.test.tsx against the engine
+claude plugin test .             # run tests/*.test.ts(x) against the engine
 claude plugin validate .         # check the manifest and the hooks module
 ```
 
 | File | What it holds |
 | --- | --- |
-| `hooks/register.tsx` | the hooks module: wires the events to the rest |
-| `hooks/doc.ts` | the shown file and the offer: their state and each step that changes them |
-| `hooks/files.ts` | finding Markdown files and reading them |
-| `hooks/ui.tsx` | the pane and the band |
+| `hooks/register.tsx` | the hooks module: the commands, and the events wired to the rest |
+| `hooks/nav.ts` | the pane: whether it is open, the view it shows, and Back across views |
+| `hooks/views/*.ts` | each view's state and the steps that change it |
+| `hooks/ui/*.tsx` | the pane, the band, and each view's drawing |
+| `hooks/find.ts` | finding files and reading them |
+| `hooks/prompt.ts` | quoting and mentioning into the prompt |
 | `hooks/messages.ts` | the messages in English and Japanese, and which language to use |
-| `hooks/paths.ts`, `quote.ts`, `markdown.ts`, `diff.ts` | pure functions: paths, quoting, preparing Markdown, line diffs |
-| `tests/md-review.test.tsx` | the mod against the engine |
+| `hooks/pure/*.ts` | pure functions: paths, targets, quoting, Markdown, line diffs |
+| `tests/*.test.tsx` | the mod against the engine; `tests/support.tsx` is the engine beneath |
 | `tests/units.test.ts` | the pure functions |
 
 ## License

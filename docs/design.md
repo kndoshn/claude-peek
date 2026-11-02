@@ -193,11 +193,12 @@ hooks/
   views/tree.ts     ツリー表示の状態と操作
   views/git.ts      Git 表示の状態と操作
   views/command.ts  コマンド表示の状態と操作、実行の履歴（$.store）
-  find.ts           対象の解決とあいまい検索の候補（会話・プロジェクト・ghq）
-  quote.ts          引用（純粋な関数）
+  find.ts           対象の解決とあいまい検索の候補（会話・プロジェクト・ghq）、ファイルの読み込み
+  prompt.ts         入力欄への引用と @ の追加
   ui/*.tsx          パネルと帯、表示ごとの描画
   pure/
-    paths.ts        パスの解決とラベル、候補の並べ替え
+    paths.ts        パスの解決とラベル、会話に出たファイル、候補の並べ替え
+    quote.ts        引用の見出しと、選択した文字列の行の特定
     markdown.ts     リンク、front matter、描画の上限での切り詰め
     diff.ts         行の差分と hunk
     git.ts          git の出力の解析（status v2、グラフ付きの log、show のファイルごとの分割）
