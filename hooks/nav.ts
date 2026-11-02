@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Location, Nav, ViewName } from '../types'
+import { where } from './find'
 import type { Kind } from './find'
 import type { Messages } from './messages'
 import { commandLocation, loadCommand } from './views/command'
@@ -145,9 +146,18 @@ export async function reopen($: Api, say: Messages): Promise<Opened | undefined>
   return opened
 }
 
-// Shows `view` where it was, or its hint when it never showed anything; Back is left as it is.
+// Where a view that never showed anything opens: the tree and Git at the working directory. A
+// file or a command has none, and the pane says how to open one.
+async function firstPlace($: Api, view: ViewName): Promise<Location | undefined> {
+  if (view === 'tree') return { view: 'tree', root: (await where($)).cwd }
+  if (view === 'git') return { view: 'git' }
+  return undefined
+}
+
+// Shows `view` where it was, else where it first opens, else with how to open it; Back is left as
+// it is.
 export async function switchView($: Api, say: Messages, view: ViewName): Promise<void> {
-  const to = await here($, view)
+  const to = (await here($, view)) ?? (await firstPlace($, view))
   const opened = to ? await load($, say, to, 'place') : { title: say.views[view], label: say.views[view], lines: 1 }
   if ('error' in opened) {
     $.ui.toast(opened.error)

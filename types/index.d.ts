@@ -44,8 +44,9 @@ export type CommandRun = {
   stoppedAfter?: number
 }
 
-// An entry of a folder as the tree lists it.
-export type TreeEntry = { name: string; kind: 'file' | 'dir' | 'other' }
+// An entry of a folder as the tree lists it: a symbolic link as what it leads to (other when it
+// leads nowhere), marked as a link.
+export type TreeEntry = { name: string; kind: 'file' | 'dir' | 'other'; isLink?: boolean }
 
 // The folder the tree view shows: its path, how it is labelled (the header, from the home; the
 // heading of a quote and a mention, from the working directory; the name atop the tree), its

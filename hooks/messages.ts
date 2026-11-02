@@ -48,7 +48,6 @@ export type Messages = {
   copy: string
   copied: string
   failed: string
-  treeHint: string
   notFolder: (path: string) => string
   more: (hidden: number) => string
   quoteTree: string
@@ -113,7 +112,6 @@ const MESSAGES: Record<Lang, Messages> = {
     copy: 'Copy',
     copied: 'Copied',
     failed: 'could not run',
-    treeHint: '/peek [folder] shows a folder here',
     notFolder: path => `Not a folder: ${path}`,
     more: hidden => `… ${hidden} more`,
     quoteTree: 'Quote tree',
@@ -176,7 +174,6 @@ const MESSAGES: Record<Lang, Messages> = {
     copy: 'コピー',
     copied: 'コピーしました',
     failed: '実行できませんでした',
-    treeHint: '/peek [フォルダー] でフォルダーをここに表示します',
     notFolder: path => `フォルダーではありません: ${path}`,
     more: hidden => `…ほか ${hidden} 件`,
     quoteTree: 'ツリーを引用',

@@ -70,7 +70,8 @@ test('in a repository the tree marks changed files and their folders, and dims w
     '/proj/build/out.js': 'o',
     '/proj/README.md': 'r',
   })
-  r.commands['git rev-parse --show-toplevel --abbrev-ref HEAD'] = { exitCode: 0, stdout: '/proj\nmain\n' }
+  r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: '\n' }
+  r.commands['git branch --show-current'] = { exitCode: 0, stdout: 'main\n' }
   r.commands['git status --porcelain=v1 -z --untracked-files=normal'] = {
     exitCode: 0,
     stdout: ' M docs/a.md\0?? docs/new.md\0R  docs/c.md\0docs/b.md\0',
@@ -92,6 +93,41 @@ test('in a repository the tree marks changed files and their folders, and dims w
   await ui.unmount()
   const status = r.ran.find(run => run.argv[1] === 'status')
   expect(status).toMatchObject({ cwd: '/proj', env: { GIT_OPTIONAL_LOCKS: '0' } })
+})
+
+test('a folder below the top of a repository is marked by its place there, whatever path led to it, and a detached head names no branch', async ($, on) => {
+  const r = engine(on, { '/proj/docs/a.md': 'a', '/proj/docs/b.md': 'b' })
+  // git answers these in a repository without commits too, and from the folder's real path.
+  r.commands['git rev-parse --show-prefix'] = { exitCode: 0, stdout: 'docs/\n' }
+  r.commands['git branch --show-current'] = { exitCode: 0, stdout: '\n' }
+  r.commands['git status --porcelain=v1 -z --untracked-files=normal'] = { exitCode: 0, stdout: '?? docs/a.md\0 M README.md\0' }
+
+  await peek($, 'docs')
+  expect((await pane($)).header).toBe('/proj/docs')
+  expect(await rows($)).toEqual(['├── a.md ?', '└── b.md'])
+})
+
+test('a link to a folder opens as a folder when clicked, and a link to a file as the file', async ($, on) => {
+  const r = engine(on, { '/proj/docs/a.md': 'a', '/shared/notes/n.md': 'n', '/shared/x.md': 'x' })
+  r.links['/proj/notes'] = '/shared/notes'
+  r.links['/proj/x.md'] = '/shared/x.md'
+
+  await peek($, '.')
+  // A link is not opened at first: it may lead anywhere, up to a folder above.
+  expect(await rows($)).toEqual(['├── docs/', '│   └── a.md', '├── notes/', '└── x.md'])
+  await pressPane($, 'tree:notes')
+  expect(await rows($)).toEqual(['├── docs/', '│   └── a.md', '├── notes/', '│   └── n.md', '└── x.md'])
+  await pressPane($, 'tree:x.md')
+  expect(r.opened.at(-1)).toBe('x.md')
+  expect(r.toasts).toEqual([])
+})
+
+test('~ alone is the home folder', async ($, on) => {
+  const r = engine(on, { '/home/me/notes/a.md': 'a', '/home/me/repos/github.com/me/x/README.md': 'r' })
+  r.commands.ghq = { exitCode: 0, stdout: '/home/me/repos/github.com/me/x\n' }
+
+  await peek($, '~')
+  expect((await pane($)).header).toBe('~')
 })
 
 test('the band quotes the tree, mentions the chosen folder and copies the tree', async ($, on) => {

@@ -28,8 +28,8 @@ export function toolResult(): Message {
 }
 
 // The engine beneath the plugin. `files`, `messages` and the record's fields may change during a
-// test; a file's modification time is 0 until `mtimes` says otherwise, and a folder lists the
-// files and folders under it unless `dirs` gives its entries.
+// test; a file's modification time is 0 until `mtimes` says otherwise, a folder lists the files
+// and folders under it, and a path in `links` is a symbolic link to the path it gives.
 export function engine(on: On, files: Files, messages: Message[] = []) {
   const record = {
     clock: mock.clock(on),
@@ -50,6 +50,7 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     messageReads: 0,
     draft: '',
     mtimes: {} as Record<string, number>,
+    links: {} as Record<string, string>,
     env: {} as Record<string, string>,
     config: [] as { key: string; value: string }[],
     // The project's files as git and fd list them; fd is missing until a test sets it.
@@ -99,21 +100,30 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     })),
   }))
   const isDir = (path: string) => Object.keys(files).some(file => file.startsWith(`${path}/`))
-  on('fs.exists', (_, e) => ({ value: e.path in files || isDir(e.path) }))
+  // Where a path leads, the links on the way followed.
+  const resolve = (path: string) => {
+    for (const [link, target] of Object.entries(record.links)) {
+      if (path === link || path.startsWith(`${link}/`)) return `${target}${path.slice(link.length)}`
+    }
+    return path
+  }
+  on('fs.exists', (_, e) => ({ value: resolve(e.path) in files || isDir(resolve(e.path)) }))
   on('fs.read', (_, e) => {
-    const text = files[e.path]
+    const text = files[resolve(e.path)]
     if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
     return { value: text }
   })
   on('fs.stat', (_, e) => {
-    const text = files[e.path]
-    if (text === undefined && !isDir(e.path)) throw new Error(`ENOENT: ${e.path}`)
+    const path = resolve(e.path)
+    const text = files[path]
+    if (text === undefined && !isDir(path)) throw new Error(`ENOENT: ${e.path}`)
     const kind = text === undefined ? ('dir' as const) : ('file' as const)
-    return { value: { kind, size: text?.length ?? 0, mtimeMs: record.mtimes[e.path] ?? 0, isLink: false } }
+    return { value: { kind, size: text?.length ?? 0, mtimeMs: record.mtimes[path] ?? 0, isLink: e.path in record.links } }
   })
   on('fs.list', (_, e) => {
-    const dir = e.path ?? CWD
-    if (!isDir(dir)) throw new Error(`ENOENT: ${dir}`)
+    const asked = e.path ?? CWD
+    const dir = resolve(asked)
+    if (!isDir(dir)) throw new Error(`ENOENT: ${asked}`)
     const names = new Map<string, FsEntry>()
     for (const [path, text] of Object.entries(files)) {
       if (!path.startsWith(`${dir}/`)) continue
@@ -122,6 +132,11 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
       names.set(name, rest.length
         ? { name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false }
         : { name, kind: 'file', size: text.length, mtimeMs: 0, isLink: false })
+    }
+    // A link is listed as itself, not as what it leads to.
+    for (const link of Object.keys(record.links)) {
+      const name = link.slice(asked.length + 1)
+      if (link.startsWith(`${asked}/`) && !name.includes('/')) names.set(name, { name, kind: 'other', size: 0, mtimeMs: 0, isLink: true })
     }
     return { value: [...names.values()] }
   })
@@ -161,6 +176,7 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
   })
   on('turn.complete', () => ({ text: '' }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('prompt.submit', (_, e) => ({ text: e.text }))
   return record
 }
@@ -235,6 +251,11 @@ export async function turnEnds($: Engine) {
 
 export async function start($: Engine) {
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+}
+
+// The conversation ends: a /clear, a resume of another, or the person leaving.
+export async function sessionEnds($: Engine, reason: 'clear' | 'resume' | 'prompt_input_exit') {
+  await $.session.end({ reason, sessionId: 's1', resume: { id: 's1' } })
 }
 
 export async function submit($: Engine, text: string, commandName?: string) {

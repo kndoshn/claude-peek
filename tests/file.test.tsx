@@ -12,6 +12,7 @@ import {
   peek,
   press,
   pressPane,
+  sessionEnds,
   shown,
   start,
   submit,
@@ -299,6 +300,14 @@ test('a change to the open file, by Claude or anything else, redraws the pane', 
   await r.clock.advance(1000)
   expect(await shown($)).toBe('back')
   expect((await pane($)).header).not.toContain('deleted')
+
+  // A file there that cannot be shown any more (too large, binary) keeps what was shown, not
+  // marked as gone.
+  files['/proj/a.md'] = 'x'.repeat(4 * 1024 * 1024 + 1)
+  r.mtimes['/proj/a.md'] = 12
+  await r.clock.advance(1000)
+  expect(await shown($)).toBe('back')
+  expect((await pane($)).header).not.toContain('deleted')
 })
 
 test('the source view shows the Markdown as written, numbered by line, and toggles back', async ($, on) => {
@@ -427,6 +436,24 @@ test('the pane opens to be read: closed by Escape, 100 columns docked, inline as
     ['peek', true, 100, 3],
     ['peek', true, 100, 4],
   ])
+})
+
+test('a /clear or a resume closes the pane, as the next conversation starts its state over; leaving does not', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a' })
+  await md($, 'a.md')
+  await sessionEnds($, 'prompt_input_exit')
+  expect(r.closed).toEqual([])
+
+  await sessionEnds($, 'clear')
+  expect(r.closed).toEqual(['peek'])
+  expect(await button($, 'quote')).toBeUndefined()
+
+  await md($, 'a.md')
+  await sessionEnds($, 'resume')
+  expect(r.closed).toEqual(['peek', 'peek'])
+  // A closed pane is not closed again.
+  await sessionEnds($, 'clear')
+  expect(r.closed).toEqual(['peek', 'peek'])
 })
 
 test("in a dark theme the pane takes the terminal's background, in a light one the theme's", async ($, on) => {

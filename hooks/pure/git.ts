@@ -77,16 +77,32 @@ export function parseLog(output: string): LogLine[] {
     })
 }
 
+// A path git quotes in a patch: one that holds a quote, a backslash or a control character.
+const QUOTED = String.raw`"(?:[^"\\]|\\.)*"`
+// `diff --git a/<path> b/<path>`, each side maybe quoted.
+const HEADER = new RegExp(`^diff --git (${QUOTED}|a/.*) (${QUOTED}|b/.*)$`)
+
+// A path as git writes it on `side` of a patch, without its `a/` or `b/`; undefined for none
+// (/dev/null). The quote and the backslash are taken back; a control character stays escaped, as
+// a drawing refuses it.
+function unquote(written: string, side: 'a' | 'b'): string | undefined {
+  const quoted = written.startsWith('"') && written.endsWith('"') && written.length > 1
+  const path = quoted ? written.slice(1, -1).replace(/\\(.)/g, (escape, char: string) => (char === '"' || char === '\\' ? char : escape)) : written
+  return path.startsWith(`${side}/`) ? path.slice(2) : undefined
+}
+
 // A commit's patch split by file.
 export function splitPatch(patch: string): PatchFile[] {
   const files: PatchFile[] = []
   for (const chunk of patch.split(/^(?=diff --git )/m)) {
     if (!chunk.startsWith('diff --git ')) continue
     const lines = chunk.replace(/\n$/, '').split('\n')
-    const plus = lines.find(line => line.startsWith('+++ b/'))?.slice(6)
-    const minus = lines.find(line => line.startsWith('--- a/'))?.slice(6)
-    const named = /^diff --git a\/(.*) b\/(.*)$/.exec(lines[0] ?? '')
-    const path = plus ?? minus ?? named?.[2] ?? ''
+    const side = (prefix: string, which: 'a' | 'b') => {
+      const line = lines.find(found => found.startsWith(prefix))
+      return line === undefined ? undefined : unquote(line.slice(prefix.length), which)
+    }
+    const named = HEADER.exec(lines[0] ?? '')?.[2]
+    const path = side('+++ ', 'b') ?? side('--- ', 'a') ?? (named === undefined ? undefined : unquote(named, 'b')) ?? ''
     const first = lines.findIndex(line => line.startsWith('@@'))
     files.push({
       path,

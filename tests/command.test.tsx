@@ -139,11 +139,45 @@ test('the band switches between the views opened, and /peek alone reopens the la
   expect(r.ran.filter(run => run.argv[0] === '/bin/sh')).toHaveLength(1)
 })
 
-test('a view not yet opened says how to open it', async ($, on) => {
-  const r = engine(on, {})
+test('a view not yet opened opens at its default: the tree and Git at the working directory, the file view with how to open a file', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a' })
   r.commands['/bin/sh'] = { exitCode: 0, stdout: 'out\n' }
+  r.commands['git rev-parse --show-toplevel'] = { exitCode: 0, stdout: '/proj\n' }
+  r.commands['git status --porcelain=v2 --branch --show-stash -z --untracked-files=normal'] = {
+    exitCode: 0,
+    stdout: ['# branch.oid 1', '# branch.head main', ''].join('\0'),
+  }
   await peek($, '!echo out')
 
   await press($, 'view:file')
   expect((await pane($, 'hint')).keyed?.text).toBe('/peek [path] shows a file here')
+  await press($, 'view:tree')
+  expect((await pane($)).header).toBe('/proj')
+  await press($, 'view:git')
+  expect((await pane($)).header).toBe('/proj · main')
+  expect(r.toasts).toEqual([])
+})
+
+test('Git not yet opened outside a repository says so and leaves the pane as it was', async ($, on) => {
+  const r = engine(on, {})
+  r.commands['/bin/sh'] = { exitCode: 0, stdout: 'out\n' }
+  await peek($, '!echo out')
+
+  await press($, 'view:git')
+  expect(r.toasts).toEqual(['Not in a git repository'])
+  expect((await pane($)).code?.source).toBe('out\n')
+})
+
+test('inline, the pane is as tall as the output, and the errors with their heading', async ($, on) => {
+  const r = engine(on, {})
+  r.commands['/bin/sh'] = { exitCode: 1, stdout: 'a\nb\n', stderr: 'e\n' }
+  await peek($, '!x')
+  r.commands['/bin/sh'] = { exitCode: 1, stdout: '', stderr: 'e\n' }
+  await peek($, '!y')
+  r.commands['/bin/sh'] = { exitCode: 0, stdout: '' }
+  await peek($, '!z')
+
+  // The header and its gap, then: the output, a gap, the heading, a gap, the errors; the errors
+  // alone; or the line that says there is no output.
+  expect(r.opens.map(open => open.rows)).toEqual([2 + 2 + 3 + 1, 2 + 2 + 1, 2 + 1])
 })

@@ -112,7 +112,8 @@ export async function rebaseFile($: Api): Promise<void> {
 }
 
 // Reads the shown file again when it changed on disk since it was read. A file gone stays shown,
-// marked as gone until it is back.
+// marked as gone until it is back; one there that cannot be shown any more (too large, binary)
+// keeps what was shown until it changes again.
 export async function refreshFile($: Api): Promise<void> {
   if (refreshing) return
   refreshing = true
@@ -121,13 +122,15 @@ export async function refreshFile($: Api): Promise<void> {
     if (!shown) return
     const now = await mtime($, shown.path)
     if (now === shown.mtimeMs && !shown.isDeleted) return
-    const loaded = now === undefined ? undefined : await load($, shown.path)
-    const text = loaded && 'text' in loaded ? loaded : undefined
-    if (!text && shown.isDeleted) return
-    await update($, file, current => {
-      if (current?.path !== shown.path) return current
-      return text ? { ...current, ...text, isDeleted: false } : { ...current, isDeleted: true }
-    })
+    const isShown = (current: FileDoc | null): current is FileDoc => current?.path === shown.path
+    if (now === undefined) {
+      if (!shown.isDeleted) await update($, file, current => (isShown(current) ? { ...current, isDeleted: true } : current))
+      return
+    }
+    const loaded = await load($, shown.path)
+    // What was read; else the time alone, so the file is not read again until it changes.
+    const found = 'text' in loaded ? loaded : { mtimeMs: now }
+    await update($, file, current => (isShown(current) ? { ...current, ...found, isDeleted: false } : current))
   } finally {
     refreshing = false
   }

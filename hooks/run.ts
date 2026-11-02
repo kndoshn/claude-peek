@@ -5,8 +5,15 @@ import type { EngineInterface } from 'claude-code'
 
 type Api = EngineInterface
 
-// git without taking the index lock, which a git of Claude's may be holding.
-const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0' }
+// git without taking the index lock, which a git of Claude's may be holding, and writing paths as
+// they are rather than quoting each byte past ASCII in octal (core.quotePath, by environment since
+// git 2.31 so the arguments stay git's own).
+const GIT_ENV = {
+  GIT_OPTIONAL_LOCKS: '0',
+  GIT_CONFIG_COUNT: '1',
+  GIT_CONFIG_KEY_0: 'core.quotePath',
+  GIT_CONFIG_VALUE_0: 'false',
+}
 
 // What `git <args>` printed in `cwd`, or undefined when it failed or could not run.
 export async function runGit($: Api, args: readonly string[], cwd: string): Promise<string | undefined> {

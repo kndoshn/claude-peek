@@ -54,8 +54,15 @@ export async function drawGit($: Api, e: RenderInput<'Pane'>, say: Messages, sho
   }
 
   const s = shown.status
+  // A path in the status opens in the file view, or in the tree when it is a folder: one git lists
+  // whole (untracked), a link to one, a submodule.
+  const open = async (path: string) => {
+    const at = `${shown.root}/${path.replace(/\/$/, '')}`
+    const isDir = (await $.fs.stat(at).catch(() => undefined))?.kind === 'dir'
+    await follow($, say, isDir ? { view: 'tree', root: at } : { view: 'file', path: at })
+  }
   const fileRow = (kind: 'staged' | 'unstaged' | 'untracked', path: string, mark: string) => (
-    <Button key={`git-file:${kind}:${path}`} plain onPress={() => follow($, say, { view: 'file', path: `${shown.root}/${path}` })}>
+    <Button key={`git-file:${kind}:${path}`} plain onPress={() => open(path)}>
       <Text color={MARK_COLORS[mark] ?? 'inactive'}>{mark}</Text>
       <Text>{` ${path}`}</Text>
     </Button>

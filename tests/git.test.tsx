@@ -77,6 +77,32 @@ test('/peek git shows the branch, the changes by kind and the history', async ($
   expect(status).toMatchObject({ cwd: '/proj', env: { GIT_OPTIONAL_LOCKS: '0' } })
 })
 
+test('git writes paths as they are, not quoted with their bytes in octal', async ($, on) => {
+  const r = engine(on, {})
+  repository(r)
+  await peek($, 'git')
+  await pressPane($, 'commit:abc1234')
+
+  const shows = r.ran.filter(run => run.argv[1] === 'show')
+  expect(shows.length).toBe(3)
+  for (const show of shows) {
+    expect(show.env).toMatchObject({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.quotePath', GIT_CONFIG_VALUE_0: 'false' })
+  }
+})
+
+test('a folder in the status (untracked, a link to one, a submodule) opens in the tree', async ($, on) => {
+  const r = engine(on, { '/proj/new/a.md': 'a', '/shared/b.md': 'b' })
+  r.links['/proj/linked'] = '/shared'
+  repository(r, ['# branch.oid 1', '# branch.head main', '? linked', '? new/', ''].join('\0'))
+  await peek($, 'git')
+
+  await pressPane($, 'git-file:untracked:new/')
+  await press($, 'back')
+  await pressPane($, 'git-file:untracked:linked')
+  expect(r.toasts).toEqual([])
+  expect(r.opened).toEqual(['git', 'new/', 'git', 'linked/'])
+})
+
 test('a changed file opens in the file view, and Back returns to Git', async ($, on) => {
   const r = engine(on, { '/proj/src/a.ts': 'a' })
   repository(r)

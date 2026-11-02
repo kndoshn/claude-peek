@@ -1,4 +1,5 @@
-// The pane: the view the band chose, or how to open that view when it never showed anything.
+// The pane: the view the band chose, or how to open that view when it never showed anything (a
+// file or a command; the tree and Git open at the working directory).
 
 import type { EngineInterface, RenderElement, RenderInput } from 'claude-code'
 
@@ -35,7 +36,7 @@ export async function drawPane($: Api, e: RenderInput<'Pane'>): Promise<RenderEl
     if (shown) return drawCommand($, e, say, shown)
   }
   const { Box, Text } = $.ui.resolve(e)
-  const hint = state.view === 'command' ? say.commandHint : state.view === 'tree' ? say.treeHint : say.emptyPane
+  const hint = state.view === 'command' ? say.commandHint : say.emptyPane
   return (
     <Box key="hint">
       <Text dimColor>{hint}</Text>

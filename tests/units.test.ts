@@ -88,6 +88,8 @@ const at = { cwd: '/proj', home: '/home/me' }
 test('paths resolve from the working directory or the home and fold dots', () => {
   expect(absolute(at, './docs/../a.md')).toBe('/proj/a.md')
   expect(absolute(at, '~/n/b.md')).toBe('/home/me/n/b.md')
+  expect(absolute(at, '~')).toBe('/home/me')
+  expect(absolute(at, '~me')).toBe('/proj/~me')
   expect(absolute(at, '/x//y/./z.md')).toBe('/x/y/z.md')
   expect(normalize('/a/../../b')).toBe('/b')
   expect(dirname('/a.md')).toBe('/')
@@ -288,4 +290,30 @@ test('a patch splits by file, a binary or mode change keeping what git says', ()
     { path: 'img.png', hunks: '', note: 'Binary files a/img.png and b/img.png differ' },
     { path: 'gone.ts', hunks: '@@ -1 +0,0 @@\n-z\n', note: '' },
   ])
+})
+
+// A control character stays escaped, as a drawing refuses it.
+test('a path git quotes (a quote, a backslash or a control character in it) reads as written, control characters escaped', () => {
+  const patch = [
+    'diff --git "a/say \\"hi\\".md" "b/say \\"hi\\".md"',
+    'new file mode 100644',
+    '--- /dev/null',
+    '+++ "b/say \\"hi\\".md"',
+    '@@ -0,0 +1 @@',
+    '+hi',
+    'diff --git "a/back\\\\slash\\ttab.md" "b/back\\\\slash\\ttab.md"',
+    'deleted file mode 100644',
+    '--- "a/back\\\\slash\\ttab.md"',
+    '+++ /dev/null',
+    '@@ -1 +0,0 @@',
+    '-x',
+    'diff --git "a/bell\\007.bin" "b/bell\\007.bin"',
+    'index 3..4 100644',
+    'Binary files "a/bell\\007.bin" and "b/bell\\007.bin" differ',
+    'diff --git a/my img.png b/my img.png',
+    'index 3..4 100644',
+    'Binary files a/my img.png and b/my img.png differ',
+    '',
+  ].join('\n')
+  expect(splitPatch(patch).map(file => file.path)).toEqual(['say "hi".md', 'back\\slash\\ttab.md', 'bell\\007.bin', 'my img.png'])
 })

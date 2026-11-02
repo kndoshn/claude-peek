@@ -40,10 +40,11 @@ export function normalize(path: string): string {
   return `/${parts.join('/')}`
 }
 
-// `path` as an absolute path: as it is, from the home for ~/, else from the working directory.
+// `path` as an absolute path: as it is, from the home for ~ and ~/, else from the working
+// directory.
 export function absolute(at: Where, path: string): string {
   if (path.startsWith('/')) return normalize(path)
-  if (path.startsWith('~/')) return normalize(`${at.home ?? '~'}${path.slice(1)}`)
+  if (path === '~' || path.startsWith('~/')) return normalize(`${at.home ?? '~'}${path.slice(1)}`)
   return normalize(`${at.cwd}/${path}`)
 }
 

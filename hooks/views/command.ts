@@ -8,6 +8,7 @@ import type { CommandRun, Location } from '../../types'
 import { where } from '../find'
 import type { Messages } from '../messages'
 import type { Opened } from '../nav'
+import { lines } from '../pure/diff'
 import { fenced } from '../pure/markdown'
 import { locate } from '../pure/quote'
 import { clean, dropShellNoise } from '../pure/terminal'
@@ -84,12 +85,21 @@ export async function rerunCommand($: Api): Promise<void> {
   if (shown) await runCommand($, shown.command, shown.cwd)
 }
 
+// The rows the view draws under its header, a gap between each part: the output; the errors
+// under their heading; or, with neither, the line that says so.
+function outputRows(shown: CommandRun): number {
+  const output = lines(shown.stdout).length
+  const errors = shown.stderr.trim() === '' ? 0 : lines(shown.stderr).length
+  if (output + errors === 0) return 1
+  return errors === 0 ? output : output + (output > 0 ? 1 : 0) + 2 + errors
+}
+
 // What showing the command view comes to: the last command's output, or why there is none.
 export async function loadCommand($: Api, say: Messages): Promise<Opened> {
   const shown = await read($, command)
   if (!shown) return { error: say.commandHint }
   const title = `$ ${shown.command}`
-  return { title, label: title, lines: `${shown.stdout}${shown.stderr}`.split('\n').length }
+  return { title, label: title, lines: outputRows(shown) }
 }
 
 // Where the command view is, for Back.

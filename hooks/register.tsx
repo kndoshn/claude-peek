@@ -4,7 +4,7 @@ import { candidates, recentMessages, existing, resetFind, resolvePlace, where } 
 import type { Kind } from './find'
 import { configureLanguage, messages } from './messages'
 import type { Messages } from './messages'
-import { forgetPane, isPaneShown, navigate, openView, PANE, reopen } from './nav'
+import { closePane, forgetPane, isPaneShown, navigate, navState, openView, PANE, reopen } from './nav'
 import { rank, suggestion } from './pure/paths'
 import { parseTarget } from './pure/target'
 import { drawBand } from './ui/band'
@@ -179,7 +179,7 @@ export const register: Register = (on, options: PluginOptions) => {
   })
 
   // A command or an edit of Claude's may change what the tree shows.
-  on('tool.call', async ($, e, next) => {
+  on('tool.call', async (_, e, next) => {
     const result = await next(e)
     if (CHANGING_TOOLS.has(e.tool)) {
       markTreeStale()
@@ -188,6 +188,14 @@ export const register: Register = (on, options: PluginOptions) => {
 
     return result
   })
+
+  // A /clear or a resume goes on in another conversation, whose state starts over (or is that
+  // conversation's own) while the engine keeps the pane open; closed, the pane agrees with it.
+  on('session.end', async ($, e, next) => {
+    if ((e.reason === 'clear' || e.reason === 'resume') && (await navState($)).isOpen) await closePane($).catch(() => undefined)
+
+    return next(e)
+  }).catch((_, e, next) => next(e))
 
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE) await forgetPane($).catch(() => undefined)

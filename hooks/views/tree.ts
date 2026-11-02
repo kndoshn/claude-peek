@@ -42,27 +42,38 @@ export async function shownTree($: Api): Promise<TreeState | null> {
   return read($, tree)
 }
 
+// What a link leads to: a file, a folder, or other when it leads nowhere.
+async function linkedKind($: Api, path: string): Promise<TreeEntry['kind']> {
+  return (await $.fs.stat(path).catch(() => undefined))?.kind ?? 'other'
+}
+
+// A folder's entries, a link listed as what it leads to.
 async function listDir($: Api, path: string): Promise<TreeEntry[] | undefined> {
   try {
     const entries = await $.fs.list(path)
-    return sortEntries(entries.map(entry => ({ name: entry.name, kind: entry.kind })))
+    const kinds = await Promise.all(entries.map(entry => (entry.isLink ? linkedKind($, `${path}/${entry.name}`) : entry.kind)))
+    return sortEntries(entries.map((entry, i) => ({ name: entry.name, kind: kinds[i] ?? entry.kind, ...(entry.isLink ? { isLink: true } : {}) })))
   } catch {
     return undefined
   }
 }
 
-// The branch, Git's marks and what git ignores, when `root` is in a repository.
+// The branch, Git's marks and what git ignores, when `root` is in a repository, read side by
+// side. git names the folder's place in the repository itself, so a path that reached it through
+// a link still finds its marks, and it does before the first commit too. A detached head has no
+// branch (`branch --show-current`, git 2.22).
 async function gitInfo($: Api, root: string): Promise<{ branch?: string; badges: Record<string, string>; ignored: string[] }> {
-  const top = await runGit($, ['rev-parse', '--show-toplevel', '--abbrev-ref', 'HEAD'], root)
-  if (top === undefined) return { badges: {}, ignored: [] }
-  const [toplevel = root, branch] = top.split('\n')
-  const prefix = root === toplevel ? '' : root.slice(toplevel.length + 1)
-  const [status, ignored] = await Promise.all([
+  const [place, branch, status, ignored] = await Promise.all([
+    runGit($, ['rev-parse', '--show-prefix'], root),
+    runGit($, ['branch', '--show-current'], root),
     runGit($, ['status', '--porcelain=v1', '-z', '--untracked-files=normal'], root),
     runGit($, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], root),
   ])
+  if (place === undefined) return { badges: {}, ignored: [] }
+  const prefix = place.replace(/\n$/, '').replace(/\/$/, '')
+  const name = branch?.trim()
   return {
-    ...(branch ? { branch } : {}),
+    ...(name ? { branch: name } : {}),
     badges: status === undefined ? {} : statusBadges(status, prefix),
     ignored: ignored === undefined ? [] : ignored.split('\0').filter(Boolean),
   }
@@ -89,8 +100,8 @@ async function listAll($: Api, root: string, folders: readonly string[]): Promis
 
 // Reads `root` into the tree view, its folders and git side by side. The folder shown again
 // keeps what was opened and chosen; a new one opens its smaller folders, as many as fit in
-// FIRST_ROWS. What reads as it was shown is not written, so the pane is not drawn again for
-// nothing.
+// FIRST_ROWS, but not a link, which may lead anywhere, up to a folder above. What reads as it
+// was shown is not written, so the pane is not drawn again for nothing.
 export async function loadTree($: Api, say: Messages, root: string): Promise<Opened> {
   const stat = await $.fs.stat(root).catch(() => undefined)
   if (stat?.kind !== 'dir') return { error: say.notFolder(root) }
@@ -101,7 +112,7 @@ export async function loadTree($: Api, say: Messages, root: string): Promise<Ope
   const listings: TreeState['listings'] = { '': top, ...opened }
   const expanded = same ? [...same.expanded] : []
   if (!same) {
-    const folders = top.filter(entry => entry.kind === 'dir' && !info.ignored.includes(`${entry.name}/`)).map(entry => entry.name)
+    const folders = top.filter(entry => entry.kind === 'dir' && !entry.isLink && !info.ignored.includes(`${entry.name}/`)).map(entry => entry.name)
     const children = await listAll($, root, folders)
     let rows = top.length
     for (const folder of folders) {

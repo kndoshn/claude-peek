@@ -41,7 +41,7 @@ background, as the transcript does, so light text stays readable in the ANSI the
 | --- | --- |
 | `/peek src/a.ts` | opens the file: relative to the working directory, `~/...` or absolute |
 | `/peek src/a.ts:120` or `:120-130` | opens the source at those lines, marked, scrolled to them |
-| `/peek docs` | shows the folder's tree |
+| `/peek docs` | shows the folder's tree; `/peek ~` the home's |
 | `/peek reg` | opens the best match that holds what you typed in its name or path: the files the conversation named, the project's files and folders, then the repositories of ghq. Looser matches, the letters only in order, are offered as completions instead |
 | `/peek git` | shows the repository's status and history |
 | `/peek !ls -la` | runs the command in your shell and shows its output |
@@ -55,7 +55,8 @@ Markdown is rendered; any other text file shows as source with line numbers, col
 language. Binary files and files over 4 MiB do not open. The pane is headed by the file, its line
 count and the view; a file too long to draw is cut, and the header says so. The pane checks the
 file every second and redraws when it changed on disk, whether Claude, your editor or a script
-changed it; a file deleted on disk stays shown, marked as deleted. A relative link to another
+changed it; a file deleted on disk stays shown, marked as deleted, and one that turns binary or
+grows past 4 MiB keeps what was shown. A relative link to another
 Markdown file (`[setup](../setup.md)`, `[setup][ref]`, `[a](<my notes.md>)`) opens that file in
 the pane when clicked. Front matter is drawn as a YAML block.
 
@@ -64,15 +65,17 @@ folders open at first, up to 200 rows; click a folder to open or close it, and a
 in the file view (**← Back** returns to the tree). A folder of more than 100 entries shows the
 first 100 and a row that shows the rest. Files changed in git are marked `M`, `A`, `D`, `R` or
 `?` (untracked), and folders that hold them `•`; what git ignores is dimmed and stays closed at
-first. `.git` is left out. The tree is read again every 5 seconds while shown, and when Claude
-runs a command or edits a file.
+first. `.git` is left out. A symbolic link shows as what it leads to, and a linked folder opens
+when clicked. The tree is read again every 5 seconds while shown, and when Claude runs a command
+or edits a file.
 
 `/peek git` shows the repository the working directory is in: its branch with how far it is
 ahead of and behind its upstream, the stash, the files staged, not staged and untracked (click one
-to open it), and the history as `git log --graph` draws it, 40 commits. Click a commit to see its
-author, date, message, files changed and diff by file (a merge's against its first parent);
-**← Back** returns to the history. Diffs of the work in progress are left to Claude Code's own
-`/diff`. git runs without taking the index lock (`GIT_OPTIONAL_LOCKS=0`), so it does not get in
+to open it; a folder opens in the tree), and the history as `git log --graph` draws it, 40
+commits. Click a commit to see its author, date, message, files changed and diff by file (a
+merge's against its first parent); **← Back** returns to the history. Diffs of the work in
+progress are left to Claude Code's own `/diff`. File names that are not ASCII read as written
+(`core.quotePath=false`). git runs without taking the index lock (`GIT_OPTIONAL_LOCKS=0`), so it does not get in
 the way of a git command of Claude's. While shown, its status is checked every 5 seconds, and
 the rest is read again when the status moved or Claude ran a command or edited a file.
 
@@ -88,8 +91,8 @@ inside Claude Code (by testing `CLAUDECODE`) can keep them for these commands:
 
 While the pane is open, a row above the prompt has:
 
-- **File** · **Tree** · **Git** · **Command**: switches the view; a view keeps what it showed. One never opened says
-  how to open it.
+- **File** · **Tree** · **Git** · **Command**: switches the view; a view keeps what it showed. Tree and Git never
+  opened show the working directory; File and Command never opened say how to open them.
 
 - **Quote selection**: appends the passage you selected in the pane to your draft:
 
@@ -121,7 +124,8 @@ While the pane is open, a row above the prompt has:
 - **Copy** (command): puts the output on the clipboard.
 - **← Back**: returns to the file you followed a link from.
 - **Close**: closes the pane. So do the pane's close mark, and Esc while the pane has the focus or
-  the prompt is empty and Claude is idle.
+  the prompt is empty and Claude is idle. `/clear` and resuming another conversation close it too,
+  as peek starts over in the next conversation.
 
 Click a button, or focus the row (ctrl+x tab, or a click) and press its letter: `q` quote, `s`
 source, `d` changes, `a` @ path, `t` quote tree or output, `r` run again or refresh, `c` copy, `b` back, `o` open
