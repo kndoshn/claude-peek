@@ -1,13 +1,37 @@
 # claude-peek
 
-An unofficial Claude Code mod for looking at things beside the chat and handing Claude only the
-part you need. `/peek` opens a file, a folder's tree, Git's status and history, or a command's
-output in a pane beside the conversation; select a passage with the
-mouse and press **Quote selection** to put it into your prompt, headed by where it came from
-(`src/a.ts:118-125`). What you look at stays out of the conversation: only what you quote
-reaches Claude. No other tab, editor or browser.
+Peek at files, folders, Git and command output beside the chat in Claude Code, and quote just the
+part you need into your prompt, with where it came from.
 
 [日本語](README.ja.md)
+
+`/peek` opens a pane beside the conversation. Select a passage with the mouse, press **Quote
+selection**, and it lands in your prompt like this:
+
+```
+src/parser.ts:118-120
+> const end = text.lastIndexOf('\n')
+> if (end < 0) return text
+> return text.slice(0, end)
+```
+
+What you look at stays out of the conversation: only what you quote reaches Claude. No other tab,
+editor or browser. peek is an unofficial Claude Code mod.
+
+| View | Open it with | What it shows |
+| --- | --- | --- |
+| File | `/peek src/a.ts`, `/md plan` | Markdown rendered, any other text as numbered source, and what changed since your last message |
+| Tree | `/peek docs` | a folder as a tree with git's marks; click to open folders and files |
+| Git | `/peek git` | the branch, the status and the history graph; click a commit for its diff |
+| Command | `/peek !ls -la` | the output of a command run in your own shell |
+
+## Requirements
+
+- Claude Code with hooks modules (mods). peek is tested with Claude Code 2.1.316.
+- The fullscreen terminal, for quoting: it reads the mouse selection, which Claude Code reports
+  there.
+- Optional: git (marks, the Git view, the project's files), ghq (repositories to open), fd (the
+  files outside a git repository). Without them peek leaves out what they would add.
 
 ## Install
 
@@ -28,115 +52,125 @@ claude plugin install peek --marketplace kndoshn/claude-peek
 In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins,
 Add marketplace with `kndoshn/claude-peek`, then Add plugin.
 
-peek is a hooks module (a mod) and needs a Claude Code build that loads them; it is tested with
-Claude Code 2.1.316. Quoting reads the mouse selection, which Claude Code reports in the
-fullscreen terminal. The pane docks beside the transcript from 110 columns, 100 columns wide (at
-most 45% of the terminal; a width you drag it to wins), and below that sits above the prompt, as
-tall as its content up to what the screen spares. In a dark theme it takes the terminal's
-background, as the transcript does, so light text stays readable in the ANSI themes too.
+## Usage
 
-## Use
+### Commands
 
 | You type | peek |
 | --- | --- |
 | `/peek src/a.ts` | opens the file: relative to the working directory, `~/...` or absolute |
-| `/peek src/a.ts:120` or `:120-130` | opens the source at those lines, marked, scrolled to them |
+| `/peek src/a.ts:120` or `:120-130` | opens the source at those lines, marked and scrolled to |
 | `/peek docs` | shows the folder's tree; `/peek ~` the home's |
-| `/peek reg` | opens the best match that holds what you typed in its name or path: the files the conversation named, the project's files and folders, then the repositories of ghq. Looser matches, the letters only in order, are offered as completions instead |
+| `/peek reg` | opens the best match that holds what you typed in its name or path (see below) |
 | `/peek git` | shows the repository's status and history |
 | `/peek !ls -la` | runs the command in your shell and shows its output |
 | `/peek` | opens the pane again where it was; the first time, the working directory's tree |
 | `/md [path or name]` | the same for Markdown only; without a name, the newest `.md` Claude named |
-| typing `/peek re` | completes to matching files, folders and repositories, with the folder they are in beside them |
-| typing `/peek !g` | completes to the commands you ran before that start so |
-| a reply names a `.md` | offers **Open docs/plan.md** above the prompt; **×** dismisses it |
 
-Markdown is rendered; any other text file shows as source with line numbers, coloured by its
-language. Binary files and files over 4 MiB do not open. The pane is headed by the file, its line
-count and the view; a file too long to draw is cut, and the header says so. The pane checks the
-file every second and redraws when it changed on disk, whether Claude, your editor or a script
-changed it; a file deleted on disk stays shown, marked as deleted, and one that turns binary or
-grows past 4 MiB keeps what was shown, also when you come back to it from the band or `/peek`.
-A control character shows as its picture (`␛` for an escape, `␌` for a page break), so a log
-with colours still opens, in the file view and in Git alike; front matter is found after a byte
-order mark and with CRLF line endings too. A relative link to another
-Markdown file (`[setup](../setup.md)`, `[setup][ref]`, `[a](<my notes.md>)`) opens that file in
-the pane when clicked. Front matter is drawn as a YAML block.
+A name looks through the files the conversation named, then the project's files and folders, then
+the repositories of ghq. The project's files are those `git ls-files` lists (tracked and untracked,
+not ignored), or outside a git repository those `fd` lists. A name opens only a match that holds it
+as typed; a looser match, its letters only in order, is offered as a completion instead.
 
-A folder shows as a tree, headed by its path and, in a git repository, its branch. Its smaller
-folders open at first, up to 200 rows; click a folder to open or close it, and a file to open it
-in the file view (**← Back** returns to the tree). A folder of more than 100 entries shows the
-first 100 and a row that shows the rest. Files changed in git are marked `M`, `A`, `D`, `R` or
-`?` (untracked), and folders that hold them `•`; what git ignores is dimmed and stays closed at
-first. `.git` is left out. A symbolic link shows as what it leads to, and a linked folder opens
-when clicked. While shown, git's status and the folders open are checked every 5 seconds, and
-the tree is read again when either moved or Claude ran a command or edited a file.
+While you type, `/peek re` completes to matching files, folders and repositories, with the folder
+each is in beside it, and `/peek !g` to the commands you ran before that start so. When a reply
+names a `.md` file, the row above the prompt offers **Open docs/plan.md**; **×** dismisses it.
 
-`/peek git` shows the repository the working directory is in: its branch with how far it is
-ahead of and behind its upstream, the stash, the files staged, not staged and untracked (click one
-to open it; a folder opens in the tree), and the history as `git log --graph` draws it, 40
-commits. Click a commit to see its author, date, message, files changed and diff by file (a
-merge's against its first parent); **← Back** returns to the history. Diffs of the work in
-progress are left to Claude Code's own `/diff`. File names that are not ASCII read as written
-(`core.quotePath=false`). git runs without taking the index lock (`GIT_OPTIONAL_LOCKS=0`), so it does not get in
-the way of a git command of Claude's. While shown, its status is checked every 5 seconds, and
-the rest is read again when the status moved or Claude ran a command or edited a file.
+### File view
 
-`/peek !command` runs the command in your shell (`$SHELL`, else `/bin/sh`) as an interactive
-shell would, in the working directory, so your aliases and functions work. Its output shows in
-the pane and stays out of the conversation, unlike `!` mode; quote only the lines you need. The
-pane is headed by the command and its exit code; standard error shows apart; colours and other
-escape sequences are removed. A command is stopped after 30 seconds (see Settings); one that
-never ends, such as `tail -f`, is not for this view. Like `!` mode, the command runs outside
-Claude's sandbox. peek sets `PEEK=1` for it, so a shell startup file that turns aliases off
-inside Claude Code (by testing `CLAUDECODE`) can keep them for these commands:
-`if [[ -z "${CLAUDECODE:-}" || -n "${PEEK:-}" ]]`.
+- Markdown is rendered; any other text file shows as source with line numbers, coloured by its
+  language. **Source** switches Markdown to the file as written.
+- The header names the file, its line count and the view. A file too long to draw is cut, and the
+  header says so. Binary files and files over 4 MiB do not open.
+- The file is checked every second and redrawn when it changes on disk, whoever changed it. A file
+  deleted on disk stays shown, marked as deleted; one that turns binary or grows past 4 MiB keeps
+  what was shown. Coming back to it from the band or `/peek` shows the same.
+- **Changes +3 −1** shows what changed since your last message, as a diff. It appears once the
+  file changed, and your next message starts the count again. Past about 1000 changed lines, the
+  changed part shows as replaced whole.
+- A relative link to another Markdown file (`[setup](../setup.md)`, `[setup][ref]`,
+  `[a](<my notes.md>)`) opens that file in the pane. **← Back** returns.
+- Front matter shows as a YAML block, also after a byte order mark or with CRLF line endings.
+- A control character shows as its picture (`␛` for an escape, `␌` for a page break), so a log with
+  colours still opens. The same goes for names and for what git prints.
 
-While the pane is open, a row above the prompt has:
+### Tree view
 
-- **File** · **Tree** · **Git** · **Command**: switches the view; a view keeps what it showed. Tree and Git never
-  opened show the working directory; File and Command never opened say how to open them.
+- The header shows the folder's path and, in a git repository, its branch.
+- The smaller folders open at first, up to 200 rows. Click a folder to open or close it, and a file
+  to open it in the file view (**← Back** returns to the tree).
+- A folder of more than 100 entries shows the first 100 and a row that shows the rest.
+- Files changed in git are marked `M`, `A`, `D`, `R` or `?` (untracked), and the folders that hold
+  them `•`. What git ignores is dimmed and stays closed at first. `.git` is left out.
+- A symbolic link shows as what it leads to; a linked folder opens when clicked, not at first.
+- While shown, git's status and the open folders are checked every 5 seconds, and the tree is read
+  again when either moved or Claude ran a command or edited a file.
 
-- **Quote selection**: appends the passage you selected in the pane to your draft:
+### Git view
 
-  ```
-  docs/plan.md:12-14
-  > The first step.
-  >
-  > - see the setup guide
-  ```
+- `/peek git` shows the repository the working directory is in: the branch with how far it is
+  ahead of and behind its upstream, the stash, and the files staged, not staged and untracked.
+  Click a file to open it; a folder opens in the tree.
+- The history is drawn as `git log --graph` draws it, 40 commits. Click a commit to see its author,
+  date, message, files changed and diff by file (a merge's against its first parent).
+- Diffs of the work in progress are left to Claude Code's own `/diff`.
+- File names that are not ASCII read as written (`core.quotePath=false`). git runs without taking
+  the index lock (`GIT_OPTIONAL_LOCKS=0`), so it does not get in the way of Claude's git.
+- While shown, the status is checked every 5 seconds, and the rest is read again when the status
+  moved or Claude ran a command or edited a file.
 
-  The line numbers come from finding the selected text in the file's source, or from the line
-  numbers of the source view when the selection carries them. When the text cannot be found (a
-  passage drawn from an image's alt text, say), the quote is headed by the file alone. A passage
-  selected in the conversation is quoted without a heading.
-- **Source** / **Rendered** (Markdown): switches between the rendered file and the file as
-  written, with line numbers.
-- **Changes +3 −1**: shows what changed in the file since your last message, as a diff. It
-  appears once the file changed; your next message starts the count again. **Hide changes**
-  returns to the file. Past about 1000 changed lines, the changed part is shown as replaced
-  whole.
-- **@ path**: appends the file as an `@` mention, so Claude reads it.
-- **Quote tree** (tree): appends the tree as `tree` prints it, under the folder, in a code block.
-  **@ path** mentions the folder you last clicked (else the one shown); **Copy** puts the tree on
-  the clipboard.
-- **Commit to prompt** (a commit opened in Git): appends its hash and subject. **Refresh** reads
-  Git again at once.
-- **Quote output** (command): appends the whole output under the command, in a code block.
-- **Run again** (command): runs the command anew, in the folder it ran in.
-- **Copy** (command): puts the output on the clipboard.
-- **← Back**: returns to the file you followed a link from.
-- **Close**: closes the pane. So do the pane's close mark, and Esc while the pane has the focus or
-  the prompt is empty and Claude is idle. `/clear` and resuming another conversation close it too,
-  as peek starts over in the next conversation.
+### Command view
 
-Click a button, or focus the row (ctrl+x tab, or a click) and press its letter: `q` quote, `s`
-source, `d` changes, `a` @ path, `t` quote tree or output, `r` run again or refresh, `c` copy, `b` back, `o` open
-the offered file.
+- `/peek !command` runs the command in your shell (`$SHELL`, else `/bin/sh`) as an interactive
+  shell would, in the working directory, so your aliases and functions work.
+- The output shows in the pane and stays out of the conversation, unlike `!` mode; quote only the
+  lines you need.
+- The header shows the command and its exit code. Standard error shows apart. Colours and other
+  escape sequences are removed.
+- A command is stopped after 30 seconds (see [Settings](#settings)); one that never ends, such as
+  `tail -f`, is not for this view.
+- Like `!` mode, the command runs outside Claude's sandbox.
+- peek sets `PEEK=1` for the command. If your shell's startup file turns aliases off inside Claude
+  Code by testing `CLAUDECODE`, test `PEEK` too to keep them here:
+  `if [[ -z "${CLAUDECODE:-}" || -n "${PEEK:-}" ]]`.
 
-The project's files are those `git ls-files` lists (tracked and untracked, not ignored); outside
-a git repository, those `fd` lists, if it is installed. Repositories come from `ghq list`, if ghq
-is installed.
+### Buttons and keys
+
+While the pane is open, a row above the prompt holds the buttons of the view shown. Click one, or
+focus the row (ctrl+x tab, or a click) and press its key.
+
+| Button | Shown | Key | What it does |
+| --- | --- | --- | --- |
+| **File** · **Tree** · **Git** · **Command** | always | | switches the view; each keeps what it showed. Tree and Git open at the working directory the first time; File and Command say how to open them |
+| **Quote selection** | always | `q` | appends the passage selected in the pane to your draft, headed by where it came from |
+| **Source** / **Rendered** | Markdown | `s` | switches between the rendered file and the numbered source |
+| **Changes +3 −1** / **Hide changes** | a changed file | `d` | shows or hides what changed since your last message |
+| **@ path** | file, tree | `a` | appends the file, or the folder last clicked, as an `@` mention, so Claude reads it |
+| **Quote tree** | tree | `t` | appends the tree as `tree` prints it, under the folder, in a code block |
+| **Commit to prompt** | an open commit | `a` | appends the commit's hash and subject |
+| **Refresh** | Git | `r` | reads Git again at once |
+| **Quote output** | command | `t` | appends the whole output under the command, in a code block |
+| **Run again** | command | `r` | runs the command anew, in the folder it ran in |
+| **Copy** | tree, command | `c` | puts the tree or the output on the clipboard |
+| **← Back** | after a link or a click | `b` | returns to where you came from |
+| **Close** | always | | closes the pane |
+| **Open docs/plan.md** | a reply named a `.md` | `o` | opens the file it offers |
+
+A quote's line numbers come from finding the selected text in the file, or from the numbers the
+source view put into the selection. When the text cannot be found (an image's alt text, say), the
+quote is headed by the file alone. A passage selected in the conversation is quoted without a
+heading.
+
+### The pane
+
+- From 110 columns the pane docks beside the transcript, 100 columns wide (at most 45% of the
+  terminal; a width you drag it to wins). Narrower, it sits above the prompt, as tall as its
+  content up to what the screen spares.
+- In a dark theme it takes the terminal's background, as the transcript does, so light text stays
+  readable in the ANSI themes too.
+- It closes with **Close**, its close mark, or Esc while it has the focus or the prompt is empty and
+  Claude is idle. `/clear` and resuming another conversation close it too, as peek starts over in
+  the next conversation.
 
 ## Settings
 
@@ -146,7 +180,7 @@ is installed.
 | --- | --- | --- |
 | Language | `auto`, `en`, `ja` | `auto`: Claude Code's `language` setting, then the locale (`LC_ALL`, `LC_MESSAGES`, `LANG`), then English |
 | Command time limit (seconds) | 1 to 600 | 30 |
-| Short commands /tree and /git | on, off | off: these names may be other plugins' or skills'; on, `/tree [folder]` and `/git` do what `/peek [folder]` and `/peek git` do |
+| Short commands /tree and /git | on, off | off, as other plugins or skills may use these names. On, `/tree [folder]` and `/git` do what `/peek [folder]` and `/peek git` do |
 
 ## Develop
 
