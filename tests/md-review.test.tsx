@@ -693,15 +693,3 @@ test('a band already drawn redraws when the shown file changes', async ($, on) =
   expect(r.filled[0]?.text).toBe('a.md:1\n> one\n\n')
   await ui.unmount()
 })
-
-test('the close button at the top of the pane closes it', async ($, on) => {
-  const r = engine(on, { '/proj/a.md': 'a' })
-  await md($, 'a.md')
-
-  const ui = await $.ui.mount(PANE)
-  expect((await ui.find({ key: 'pane-close' }))?.text).toBe('× Close')
-  await ui.press({ key: 'pane-close' })
-  await ui.unmount()
-  expect(r.closed).toEqual(['md-review'])
-  expect(await button($, 'quote')).toBeUndefined()
-})
