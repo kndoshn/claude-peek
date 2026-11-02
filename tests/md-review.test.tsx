@@ -511,10 +511,20 @@ test('a quote taken from the numbered source view drops the numbers and keeps th
   const source = '# Plan\n\nThe **first** step.\n\n- see [docs](docs/a.md)\n'
   const r = engine(on, { '/proj/a.md': source })
   await md($, 'a.md')
+  await press($, 'source')
   r.selection = { text: '  3 │ The **first** step.\n  4 │\n  5 │ - see [docs](docs/a.md)' }
 
   await quote($)
   expect(r.filled[0]?.text).toBe('a.md:3-5\n> The **first** step.\n>\n> - see [docs](docs/a.md)\n\n')
+})
+
+test('a number that starts a line of the rendered view stays in the quote', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'a\nb\n3 things\n' })
+  await md($, 'a.md')
+  r.selection = { text: '3 things' }
+
+  await quote($)
+  expect(r.filled[0]?.text).toBe('a.md:3\n> 3 things\n\n')
 })
 
 test('numbers that do not match the file stay in the quote', async ($, on) => {

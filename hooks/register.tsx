@@ -401,8 +401,8 @@ export const register: Register = (on, options: PluginOptions) => {
       }
       const draft = (await $.prompt.read()).text
       const gap = draft === '' || draft.endsWith('\n\n') ? '' : draft.endsWith('\n') ? '\n' : '\n\n'
-      // A selection from the source view carries its line numbers, which tell the lines.
-      const numbered = ungutter(current.text, selected.text)
+      // A selection from the source view may carry its line numbers, which tell the lines.
+      const numbered = (await read($, view)) === 'source' ? ungutter(current.text, selected.text) : undefined
       const text = numbered?.text ?? selected.text
       const head = cite(current.label, numbered?.lines ?? locate(current.text, selected.text))
       await $.prompt.fill({ text: `${gap}${head}\n${quote(text)}\n\n`, mode: 'append' })
