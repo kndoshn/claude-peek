@@ -65,7 +65,8 @@ While a file is open, a row above the prompt has:
   line numbers.
 - **Changes +3 −1**: shows what changed in the file since your last message, as a diff. It
   appears once the file changed; your next message starts the count again. **Hide changes**
-  returns to the file.
+  returns to the file. Past about 1000 changed lines, the changed part is shown as replaced
+  whole.
 - **← Back**: returns to the file you followed a link from.
 - **Close**: closes the pane. So do Esc and the pane's close mark.
 

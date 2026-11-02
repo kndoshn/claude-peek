@@ -680,3 +680,16 @@ test('completion lists the project files once for a few seconds, while /md lists
   await md($, 'setup')
   expect(listed()).toBe(3)
 })
+
+test('a band already drawn redraws when the shown file changes', async ($, on) => {
+  const r = engine(on, { '/proj/a.md': 'one\n' })
+  await md($, 'a.md')
+
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'source' })
+  expect((await ui.find({ key: 'source' }))?.text).toBe('Rendered')
+  r.selection = { text: 'one' }
+  await ui.press({ key: 'quote' })
+  expect(r.filled[0]?.text).toBe('a.md:1\n> one\n\n')
+  await ui.unmount()
+})
