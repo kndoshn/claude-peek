@@ -741,5 +741,5 @@ test('in a dark theme the pane is painted a little above black, in a light one a
   r.config = []
   await md($, 'a.md')
 
-  expect(r.backgrounds).toEqual(['rgb(28, 28, 28)', undefined, undefined])
+  expect(r.backgrounds).toEqual(['rgb(16, 16, 16)', undefined, undefined])
 })

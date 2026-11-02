@@ -20,7 +20,7 @@ const READING_COLUMNS = 100
 // The pane's header line and the gap under it.
 const HEADER_ROWS = 2
 // The pane's background in a dark theme.
-const DARK_BACKGROUND = 'rgb(28, 28, 28)'
+const DARK_BACKGROUND = 'rgb(16, 16, 16)'
 // Read and written only in this file: the state library lists a module's values from the
 // atoms each file names.
 const doc = atom({ plugin: 'md-review', key: 'doc' } as const, null, { shape: 'doc-5' })
