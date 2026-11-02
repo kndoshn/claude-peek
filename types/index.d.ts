@@ -63,6 +63,35 @@ export type TreeState = {
   ignored: string[]
 }
 
+// The Git view: the repository's top folder and how it is labelled, its status (branch, upstream,
+// stash, the files staged, not staged and untracked), the history's lines, and the commit opened
+// from the history with its details and its diff by file.
+export type GitState = {
+  root: string
+  label: string
+  status: {
+    branch: string | null
+    oid: string | null
+    upstream?: string
+    ahead: number
+    behind: number
+    stash: number
+    staged: { path: string; mark: string }[]
+    unstaged: { path: string; mark: string }[]
+    untracked: string[]
+  }
+  log: { graph: string; commit?: { hash: string; refs: string; subject: string; age: string } }[]
+  commit?: {
+    hash: string
+    author: string
+    date: string
+    subject: string
+    body: string
+    stat: string
+    files: { path: string; hunks: string; note: string }[]
+  }
+}
+
 declare module 'claude-code' {
   interface PluginState {
     peek: {
@@ -70,6 +99,7 @@ declare module 'claude-code' {
       file: Shaped<FileDoc | null>
       command: Shaped<CommandRun | null>
       tree: Shaped<TreeState | null>
+      git: Shaped<GitState | null>
       // The .md the last reply named, offered in the band until opened or dismissed.
       offer: Shaped<MdFile | null>
     }

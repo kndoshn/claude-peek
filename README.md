@@ -1,8 +1,8 @@
 # claude-peek
 
 An unofficial Claude Code mod for looking at things beside the chat and handing Claude only the
-part you need. `/peek` opens a file, a folder's tree, or a command's output in a pane beside the
-conversation; select a passage with the
+part you need. `/peek` opens a file, a folder's tree, Git's status and history, or a command's
+output in a pane beside the conversation; select a passage with the
 mouse and press **Quote selection** to put it into your prompt, headed by where it came from
 (`src/a.ts:118-125`). What you look at stays out of the conversation: only what you quote
 reaches Claude. No other tab, editor or browser.
@@ -43,6 +43,7 @@ background, as the transcript does, so light text stays readable in the ANSI the
 | `/peek src/a.ts:120` or `:120-130` | opens the source at those lines, marked, scrolled to them |
 | `/peek docs` | shows the folder's tree |
 | `/peek reg` | opens the best match for part of a name: the files the conversation named, the project's files and folders, then the repositories of ghq |
+| `/peek git` | shows the repository's status and history |
 | `/peek !ls -la` | runs the command in your shell and shows its output |
 | `/peek` | opens the pane again where it was; the first time, the working directory's tree |
 | `/md [path or name]` | the same for Markdown only; without a name, the newest `.md` Claude named |
@@ -66,6 +67,15 @@ first 100 and a row that shows the rest. Files changed in git are marked `M`, `A
 first. `.git` is left out. The tree is read again every 5 seconds while shown, and when Claude
 runs a command or edits a file.
 
+`/peek git` shows the repository the working directory is in: its branch with how far it is
+ahead of and behind its upstream, the stash, the files staged, not staged and untracked (click one
+to open it), and the history as `git log --graph` draws it, 40 commits. Click a commit to see its
+author, date, message, files changed and diff by file (a merge's against its first parent);
+**← Back** returns to the history. Diffs of the work in progress are left to Claude Code's own
+`/diff`. git runs without taking the index lock (`GIT_OPTIONAL_LOCKS=0`), so it does not get in
+the way of a git command of Claude's. The view is read again every 5 seconds while shown, and
+when Claude runs a command or edits a file.
+
 `/peek !command` runs the command in your shell (`$SHELL`, else `/bin/sh`) as an interactive
 shell would, in the working directory, so your aliases and functions work. Its output shows in
 the pane and stays out of the conversation, unlike `!` mode; quote only the lines you need. The
@@ -78,7 +88,7 @@ inside Claude Code (by testing `CLAUDECODE`) can keep them for these commands:
 
 While the pane is open, a row above the prompt has:
 
-- **File** · **Tree** · **Command**: switches the view; a view keeps what it showed. One never opened says
+- **File** · **Tree** · **Git** · **Command**: switches the view; a view keeps what it showed. One never opened says
   how to open it.
 
 - **Quote selection**: appends the passage you selected in the pane to your draft:
@@ -104,6 +114,8 @@ While the pane is open, a row above the prompt has:
 - **Quote tree** (tree): appends the tree as `tree` prints it, under the folder, in a code block.
   **@ path** mentions the folder you last clicked (else the one shown); **Copy** puts the tree on
   the clipboard.
+- **Commit to prompt** (a commit opened in Git): appends its hash and subject. **Refresh** reads
+  Git again at once.
 - **Quote output** (command): appends the whole output under the command, in a code block.
 - **Run again** (command): runs the command anew.
 - **Copy** (command): puts the output on the clipboard.
@@ -112,7 +124,7 @@ While the pane is open, a row above the prompt has:
   the prompt is empty and Claude is idle.
 
 Click a button, or focus the row (ctrl+x tab, or a click) and press its letter: `q` quote, `s`
-source, `d` changes, `a` @ path, `t` quote tree or output, `r` run again, `c` copy, `b` back, `o` open
+source, `d` changes, `a` @ path, `t` quote tree or output, `r` run again or refresh, `c` copy, `b` back, `o` open
 the offered file.
 
 The project's files are those `git ls-files` lists (tracked and untracked, not ignored); outside
@@ -121,12 +133,13 @@ is installed.
 
 ## Settings
 
-`/config` has two rows for peek:
+`/config` has three rows for peek:
 
 | Setting | Values | Default |
 | --- | --- | --- |
 | Language | `auto`, `en`, `ja` | `auto`: Claude Code's `language` setting, then the locale (`LC_ALL`, `LC_MESSAGES`, `LANG`), then English |
 | Command time limit (seconds) | 1 to 600 | 30 |
+| Short commands /tree and /git | on, off | off: these names may be other plugins' or skills'; on, `/tree [folder]` and `/git` do what `/peek [folder]` and `/peek git` do |
 
 ## Develop
 

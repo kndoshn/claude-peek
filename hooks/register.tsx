@@ -11,6 +11,7 @@ import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
 import { configureCommand, recentCommands, runCommand } from './views/command'
 import { offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
+import { markGitStale, resetGit, tickGit } from './views/git'
 import { markTreeStale, resetTree, tickTree } from './views/tree'
 import type { Opened } from './views/file'
 
@@ -34,6 +35,7 @@ const CHANGING_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookE
 async function watch($: Api): Promise<void> {
   if (await isShowing($, 'file')) await refreshFile($)
   if (await isShowing($, 'tree')) await tickTree($, await messages($))
+  if (await isShowing($, 'git')) await tickGit($, await messages($))
 }
 
 // What a command says when it opened something, or why not.
@@ -55,11 +57,22 @@ async function peekCommand($: Api, args: string): Promise<{ text: string }> {
     await runCommand($, target.command)
     return report(say, await navigate($, say, { view: 'command' }, 'anew'))
   }
-  if (target.kind !== 'path') return { text: say.notFound(args.trim()) }
+  if (target.kind === 'git') return report(say, await navigate($, say, { view: 'git' }, 'anew'))
   const place = await resolvePlace($, at, target.path, 'place')
   if (!place) return { text: say.notFound(args.trim()) }
   if (place.isDir) return report(say, await navigate($, say, { view: 'tree', root: place.path }, 'anew'))
   return report(say, await navigate($, say, { view: 'file', path: place.path, ...(target.lines ? { lines: target.lines } : {}) }, 'anew'))
+}
+
+// /tree (with the setting on): the folder named, or without one the working directory.
+async function treeCommand($: Api, args: string): Promise<{ text: string }> {
+  const say = await messages($)
+  const at = await where($)
+  const text = args.trim()
+  const place = text ? await resolvePlace($, at, text, 'place') : { path: at.cwd, isDir: true }
+  if (!place) return { text: say.notFound(text) }
+  if (!place.isDir) return { text: say.notFolder(place.path) }
+  return report(say, await navigate($, say, { view: 'tree', root: place.path }, 'anew'))
 }
 
 // /md: the Markdown named, or without one the newest .md the conversation named.
@@ -77,17 +90,24 @@ async function mdCommand($: Api, args: string): Promise<{ text: string }> {
 }
 
 export const register: Register = (on, options: PluginOptions) => {
+  // /tree and /git take names other plugins and skills may want, so they come only when asked.
+  const hasShortCommands = options.shortCommands === true
   // A load starts over: what an earlier load worked out may not hold for this one.
   configureLanguage(options.language)
   configureCommand(options.commandTimeoutSeconds)
   resetFind()
   resetFile()
   resetTree()
+  resetGit()
 
   on('session.start', async ($, e, next) => {
     const say = await messages($)
     await $.command.register({ name: 'peek', description: say.peekCommand, argumentHint: say.peekArgument, immediate: true })
     await $.command.register({ name: 'md', description: say.mdCommand, argumentHint: say.mdArgument, immediate: true })
+    if (hasShortCommands) {
+      await $.command.register({ name: 'tree', description: say.treeCommand, argumentHint: say.treeArgument, immediate: true })
+      await $.command.register({ name: 'git', description: say.gitCommand, immediate: true })
+    }
     $.clock.every(WATCH_MS, () => {
       watch($).catch(() => undefined)
     })
@@ -97,6 +117,11 @@ export const register: Register = (on, options: PluginOptions) => {
 
   on('command.run', { command: 'peek' }, async ($, e) => peekCommand($, e.args))
   on('command.run', { command: 'md' }, async ($, e) => mdCommand($, e.args))
+  on('command.run', { command: 'tree' }, async ($, e) => treeCommand($, e.args))
+  on('command.run', { command: 'git' }, async $ => {
+    const say = await messages($)
+    return report(say, await navigate($, say, { view: 'git' }, 'anew'))
+  })
 
   // Complete the argument of /peek (any file) and /md (Markdown): the files the conversation
   // named, then the project's.
@@ -115,9 +140,14 @@ export const register: Register = (on, options: PluginOptions) => {
         return { suggestions: [...base.suggestions, ...mine] }
       }
       const kind: Kind = command === 'md' ? 'markdown' : 'place'
-      const mine = rank(e.token, await candidates($, await where($), kind, false))
-        .slice(0, MAX_SUGGESTIONS)
-        .map(suggestion)
+      const say = await messages($)
+      const keyword = command === 'peek' && e.token !== '' && 'git'.startsWith(e.token) ? [{ text: 'git', label: 'git', description: say.views.git }] : []
+      const mine = [
+        ...keyword,
+        ...rank(e.token, await candidates($, await where($), kind, false))
+          .slice(0, MAX_SUGGESTIONS - keyword.length)
+          .map(suggestion),
+      ]
 
       return { suggestions: [...base.suggestions, ...mine] }
     } catch {
@@ -135,6 +165,7 @@ export const register: Register = (on, options: PluginOptions) => {
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     markTreeStale()
+    markGitStale()
     await offerNamed($).catch(() => undefined)
 
     return result
@@ -143,7 +174,10 @@ export const register: Register = (on, options: PluginOptions) => {
   // A command or an edit of Claude's may change what the tree shows.
   on('tool.call', async ($, e, next) => {
     const result = await next(e)
-    if (CHANGING_TOOLS.has(e.tool)) markTreeStale()
+    if (CHANGING_TOOLS.has(e.tool)) {
+      markTreeStale()
+      markGitStale()
+    }
 
     return result
   })

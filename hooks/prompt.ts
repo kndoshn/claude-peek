@@ -7,6 +7,7 @@ import { navState } from './nav'
 import { quote } from './pure/quote'
 import { commandBlock, commandQuote } from './views/command'
 import { fileMention, fileQuote } from './views/file'
+import { gitMention, gitQuote } from './views/git'
 import { treeBlock, treeMention, treeQuote } from './views/tree'
 
 type Api = EngineInterface
@@ -43,16 +44,21 @@ export async function quoteSelection($: Api, say: Messages): Promise<void> {
         ? await commandQuote($, selected.text)
         : inPane && state.view === 'tree'
           ? await treeQuote($, say, selected.text)
-          : undefined
+          : inPane && state.view === 'git'
+            ? await gitQuote($, selected.text)
+            : undefined
   const text = from?.text ?? selected.text
   await appendBlock($, from?.head ? `${from.head}\n${quote(text)}` : quote(text))
 }
 
-// Mentions the file or folder the view points at, so Claude reads it.
+// Mentions what the view points at: the file or folder with an @, so Claude reads it; the commit
+// opened by its hash and subject.
 export async function mention($: Api): Promise<void> {
   const state = await navState($)
   const label = state.view === 'file' ? await fileMention($) : state.view === 'tree' ? await treeMention($) : undefined
   if (label) await appendWord($, `@${label}`)
+  const commit = state.view === 'git' ? await gitMention($) : undefined
+  if (commit) await appendWord($, commit)
 }
 
 // Quotes the whole of what the view shows: a command's output under the command, a tree under

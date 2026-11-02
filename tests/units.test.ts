@@ -6,7 +6,7 @@ import { absolute, describe, dirname, named, normalize, rank } from '../hooks/pu
 import { cite, locate, quote, ungutter } from '../hooks/pure/quote'
 import { parseTarget } from '../hooks/pure/target'
 import { clean, dropShellNoise } from '../hooks/pure/terminal'
-import { statusBadges } from '../hooks/pure/git'
+import { logLineText, parseLog, parseStatus, splitPatch, statusBadges } from '../hooks/pure/git'
 import { sortEntries, treeRows, treeText } from '../hooks/pure/tree'
 import type { Change } from '../hooks/pure/diff'
 
@@ -222,4 +222,63 @@ test('a tree lists folders first, dims what git ignores below an ignored folder,
   ])
   expect(rows.filter(row => row.kind === 'more')).toEqual([{ path: 'Zeta', name: '', kind: 'more', prefix: '│   └── ', isIgnored: false, hidden: 2 }])
   expect(treeText('r/', rows, n => `+${n}`).split('\n').slice(-3)).toEqual(['│   └── +2', '├── a.md', '└── b.md'])
+})
+
+test('porcelain v2 status reads the branch, upstream, stash and files of each kind, renames and conflicts too', () => {
+  const output = [
+    '# branch.oid abc',
+    '# branch.head feature',
+    '# branch.upstream origin/feature',
+    '# branch.ab +0 -3',
+    '# stash 2',
+    '1 MM N... 100644 100644 100644 a b src/with space.ts',
+    '2 R. N... 100644 100644 100644 a b R100 new.ts',
+    'old.ts',
+    'u UU N... 100644 100644 100644 100644 a b c conflict.ts',
+    '? new dir/',
+    '',
+  ].join('\0')
+  expect(parseStatus(output)).toEqual({
+    branch: 'feature',
+    oid: 'abc',
+    upstream: 'origin/feature',
+    ahead: 0,
+    behind: 3,
+    stash: 2,
+    staged: [{ path: 'src/with space.ts', mark: 'M' }, { path: 'new.ts', mark: 'R' }],
+    unstaged: [{ path: 'src/with space.ts', mark: 'M' }, { path: 'conflict.ts', mark: 'U' }],
+    untracked: ['new dir/'],
+  })
+})
+
+test('a graph log keeps the lines without a commit, and a commit line reads as drawn', () => {
+  const lines = parseLog('*\u001fa1\u001fHEAD -> main\u001fOne\u001f1 day ago\n|\\\n| *\u001fb2\u001f\u001fTwo\u001f2 days ago\n')
+  expect(lines.map(logLineText)).toEqual(['* a1 (HEAD -> main) One 1 day ago', '|\\', '| * b2 Two 2 days ago'])
+})
+
+test('a patch splits by file, a binary or mode change keeping what git says', () => {
+  const patch = [
+    'diff --git a/a.ts b/a.ts',
+    'index 1..2 100644',
+    '--- a/a.ts',
+    '+++ b/a.ts',
+    '@@ -1 +1 @@',
+    '-x',
+    '+y',
+    'diff --git a/img.png b/img.png',
+    'index 3..4 100644',
+    'Binary files a/img.png and b/img.png differ',
+    'diff --git a/gone.ts b/gone.ts',
+    'deleted file mode 100644',
+    '--- a/gone.ts',
+    '+++ /dev/null',
+    '@@ -1 +0,0 @@',
+    '-z',
+    '',
+  ].join('\n')
+  expect(splitPatch(patch)).toEqual([
+    { path: 'a.ts', hunks: '@@ -1 +1 @@\n-x\n+y\n', note: '' },
+    { path: 'img.png', hunks: '', note: 'Binary files a/img.png and b/img.png differ' },
+    { path: 'gone.ts', hunks: '@@ -1 +0,0 @@\n-z\n', note: '' },
+  ])
 })

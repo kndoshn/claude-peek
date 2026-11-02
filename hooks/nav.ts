@@ -10,6 +10,7 @@ import type { Messages } from './messages'
 import { commandLocation, loadCommand } from './views/command'
 import { fileLocation, loadFile } from './views/file'
 import type { Opened } from './views/file'
+import { gitLocation, loadGit } from './views/git'
 import { loadTree, treeLocation } from './views/tree'
 
 type Api = EngineInterface
@@ -37,6 +38,8 @@ async function load($: Api, say: Messages, to: Location, kind: Kind): Promise<Op
       return loadCommand($, say)
     case 'tree':
       return loadTree($, say, to.root)
+    case 'git':
+      return loadGit($, say, to.commit)
     default:
       return { error: say.emptyPane }
   }
@@ -51,6 +54,8 @@ async function here($: Api, view: ViewName): Promise<Location | undefined> {
       return commandLocation($)
     case 'tree':
       return treeLocation($)
+    case 'git':
+      return gitLocation($)
     default:
       return undefined
   }

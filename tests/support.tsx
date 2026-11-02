@@ -33,6 +33,7 @@ export function toolResult(): Message {
 export function engine(on: On, files: Files, messages: Message[] = []) {
   const record = {
     clock: mock.clock(on),
+    registered: [] as string[],
     opened: [] as string[],
     opens: [] as PaneOpenArgs[],
     closed: [] as string[],
@@ -53,7 +54,10 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
     ran: [] as { argv: string[]; cwd?: string; env?: Record<string, string>; stdin?: string; timeoutMs?: number }[],
   }
   mock.store(on)
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('command.register', (_, e) => {
+    record.registered.push(e.name)
+    return { value: { command: e.name } }
+  })
   on('ui.open', (_, e) => {
     record.opened.push(e.title ?? e.id)
     record.opens.push(e)
@@ -185,7 +189,7 @@ export const BAND = {
   },
 } as const
 
-async function command($: Engine, name: string, args: string) {
+export async function command($: Engine, name: string, args: string) {
   return $.command.run({
     command: name,
     args,

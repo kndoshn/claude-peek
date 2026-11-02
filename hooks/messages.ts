@@ -53,6 +53,22 @@ export type Messages = {
   notFolder: (path: string) => string
   more: (hidden: number) => string
   quoteTree: string
+  notRepo: string
+  noCommit: (hash: string) => string
+  staged: (n: number) => string
+  unstaged: (n: number) => string
+  untracked: (n: number) => string
+  nothingToCommit: string
+  history: string
+  noCommits: string
+  diffHint: string
+  detached: (oid: string | null) => string
+  stash: (n: number) => string
+  commitToPrompt: string
+  refresh: string
+  treeCommand: string
+  treeArgument: string
+  gitCommand: string
 }
 
 export const MESSAGES: Record<Lang, Messages> = {
@@ -103,6 +119,22 @@ export const MESSAGES: Record<Lang, Messages> = {
     notFolder: path => `Not a folder: ${path}`,
     more: hidden => `… ${hidden} more`,
     quoteTree: 'Quote tree',
+    notRepo: 'Not in a git repository',
+    noCommit: hash => `Cannot read commit ${hash}`,
+    staged: n => `Staged (${n})`,
+    unstaged: n => `Not staged (${n})`,
+    untracked: n => `Untracked (${n})`,
+    nothingToCommit: 'Nothing to commit',
+    history: 'History',
+    noCommits: 'No commits yet',
+    diffHint: 'Diffs of the work in progress: /diff',
+    detached: oid => (oid ? `detached at ${oid.slice(0, 7)}` : 'detached'),
+    stash: n => `stash ${n}`,
+    commitToPrompt: 'Commit to prompt',
+    refresh: 'Refresh',
+    treeCommand: 'Show a folder as a tree in the pane (no folder: the working directory)',
+    treeArgument: '[folder or part of a name]',
+    gitCommand: "Show the repository's status and history in the pane",
   },
   ja: {
     peekCommand: 'ファイル・フォルダー・Git・コマンドの出力をパネルで覗き、必要な箇所を引用する',
@@ -151,6 +183,22 @@ export const MESSAGES: Record<Lang, Messages> = {
     notFolder: path => `フォルダーではありません: ${path}`,
     more: hidden => `…ほか ${hidden} 件`,
     quoteTree: 'ツリーを引用',
+    notRepo: 'git のリポジトリではありません',
+    noCommit: hash => `コミットを読めません: ${hash}`,
+    staged: n => `ステージ済み (${n})`,
+    unstaged: n => `未ステージ (${n})`,
+    untracked: n => `未追跡 (${n})`,
+    nothingToCommit: 'コミットするものはありません',
+    history: '履歴',
+    noCommits: 'まだコミットがありません',
+    diffHint: '作業中の差分は /diff で見られます',
+    detached: oid => (oid ? `detached（${oid.slice(0, 7)}）` : 'detached'),
+    stash: n => `stash ${n}`,
+    commitToPrompt: 'コミットを入れる',
+    refresh: '更新',
+    treeCommand: 'フォルダーをツリーでパネルに表示する（フォルダーなしで作業ディレクトリ）',
+    treeArgument: '[フォルダーか名前の一部]',
+    gitCommand: 'リポジトリの状態と履歴をパネルに表示する',
   },
 }
 

@@ -6,9 +6,11 @@ import { messages } from '../messages'
 import { navState } from '../nav'
 import { shownCommand } from '../views/command'
 import { shownFile } from '../views/file'
+import { shownGit } from '../views/git'
 import { shownTree } from '../views/tree'
 import { drawCommand } from './command'
 import { drawFile } from './file'
+import { drawGit } from './git'
 import { drawTree } from './tree'
 
 type Api = EngineInterface
@@ -23,6 +25,10 @@ export async function drawPane($: Api, e: RenderInput<'Pane'>): Promise<RenderEl
   if (state.view === 'tree') {
     const shown = await shownTree($)
     if (shown) return drawTree($, e, say, shown)
+  }
+  if (state.view === 'git') {
+    const shown = await shownGit($)
+    if (shown) return drawGit($, e, say, shown)
   }
   if (state.view === 'command') {
     const shown = await shownCommand($)

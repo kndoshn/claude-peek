@@ -11,12 +11,13 @@ import { mention, quoteAll, quoteSelection } from '../prompt'
 import { count } from '../pure/diff'
 import { commandOutput, rerunCommand } from '../views/command'
 import { changesOf, dismissOffer, offeredFile, shownFile, toggleFileMode } from '../views/file'
+import { refreshGit, shownGit } from '../views/git'
 import { shownTreeText } from '../views/tree'
 
 type Api = EngineInterface
 
 // The views the band switches between, in its order.
-const VIEWS: readonly ViewName[] = ['file', 'tree', 'command']
+const VIEWS: readonly ViewName[] = ['file', 'tree', 'git', 'command']
 
 // The buttons of the file view.
 async function fileButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): Promise<RenderElement[]> {
@@ -65,6 +66,16 @@ function treeButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): Rend
   ]
 }
 
+// The buttons of the Git view.
+async function gitButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): Promise<RenderElement[]> {
+  const { Button } = $.ui.resolve(e)
+  const shown = await shownGit($)
+  const buttons: RenderElement[] = []
+  if (shown?.commit) buttons.push(<Button key="mention" label={say.commitToPrompt} hotkey="a" onPress={() => mention($)} />)
+  buttons.push(<Button key="refresh" label={say.refresh} hotkey="r" onPress={() => refreshGit($, say)} />)
+  return buttons
+}
+
 // The buttons of the command view.
 function commandButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
   const { Button } = $.ui.resolve(e)
@@ -95,7 +106,9 @@ export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<R
       ? await fileButtons($, e, say)
       : state.view === 'tree'
         ? treeButtons($, e, say)
-        : state.view === 'command'
+        : state.view === 'git'
+          ? await gitButtons($, e, say)
+          : state.view === 'command'
           ? commandButtons($, e, say)
           : []
 
