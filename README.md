@@ -81,6 +81,59 @@ each is in beside it, and `/peek !g` to the commands you ran before that start s
 names a `.md` file or cites lines of a file, the row above the prompt offers **Open docs/plan.md**
 or **Open src/a.ts:118-120**, which opens it at those lines; **×** dismisses it.
 
+### Buttons and keys
+
+While the pane is open, a row above the prompt, the band, holds the buttons of the view shown. Click one, or
+focus the row (ctrl+x tab, or a click) and press its key.
+
+| Button | Shown | Key | What it does |
+| --- | --- | --- | --- |
+| **File** · **Tree** · **Git** · **Command** | always | | switches the view; each keeps what it showed. Tree and Git open at the working directory the first time; File and Command say how to open them |
+| **Quote selection** | always | `q` | appends the passage selected in the pane to your draft, headed by where it came from |
+| **Source** / **Rendered** | Markdown | `s` | switches between the rendered file and the numbered source |
+| **Changes +3 −1** / **Hide changes** | a changed file | `d` | shows or hides what changed since your last message |
+| **@ path** | file, tree | `a` | appends the file, or the folder last clicked, as an `@` mention, so Claude reads it |
+| **Quote tree** | tree | `t` | appends the tree as `tree` prints it, under the folder, in a code block |
+| **Commit to prompt** | an open commit | `a` | appends the commit's hash and subject |
+| **Refresh** | Git | `r` | reads Git again at once |
+| **Quote output** | command | `t` | appends the whole output under the command, in a code block |
+| **Run again** | command | `r` | runs the command anew, in the folder it ran in, keeping the output shown until it ends |
+| **Copy** | tree, command | `c` | puts the tree or the output on the clipboard |
+| **← Back** | after a link or a click | `b` | returns to where you came from |
+| **Close** | always | | closes the pane |
+| **Open docs/plan.md** | a reply named a `.md` or cited lines | `o` | opens the file it offers, at the lines cited |
+
+### Quoting
+
+**Quote selection** appends the passage you selected to your draft, after a blank line, headed by
+where it came from:
+
+| Selected in | Heading |
+| --- | --- |
+| a file | `src/a.ts:118-120` |
+| the tree | `tree docs/` |
+| Git | `git status`, `git log`, `git show abc1234` or `git show abc1234 -- src/a.ts` |
+| a command's output | `$ ls -la` |
+| the conversation | none |
+
+A quote's line numbers come from finding the selected text in the file, or from the numbers the
+source view put into the selection. When the text cannot be found (an image's alt text, say), the
+quote is headed by the file alone. A passage from one file's diff in a commit is headed
+`git show abc1234 -- src/a.ts`; one from the message or across files, by the commit alone.
+
+### The pane
+
+- From 110 columns the pane docks beside the transcript, 100 columns wide (at most 45% of the
+  terminal; a width you drag it to wins). Narrower, it sits above the prompt, as tall as its
+  content up to what the screen spares.
+- In a dark theme it takes the terminal's background, as the transcript does, so light text stays
+  readable in the ANSI themes too.
+- Behind another tab, such as `/diff`'s, it comes to the front when `/peek` or the band opens a view.
+  Meanwhile the band holds only the views, **Quote selection** and **Close**.
+- It closes with **Close**, its close mark, or Esc while it has the focus or the prompt is empty and
+  Claude is idle. `/clear` and resuming another conversation close it too, as peek starts over in
+  the next conversation.
+
 ### File view
 
 - Markdown is rendered; any other text file shows as source with line numbers, coloured by its
@@ -141,47 +194,6 @@ or **Open src/a.ts:118-120**, which opens it at those lines; **×** dismisses it
 - peek sets `PEEK=1` for the command. If your shell's startup file turns aliases off inside Claude
   Code by testing `CLAUDECODE`, test `PEEK` too to keep them here:
   `if [[ -z "${CLAUDECODE:-}" || -n "${PEEK:-}" ]]`.
-
-### Buttons and keys
-
-While the pane is open, a row above the prompt holds the buttons of the view shown. Click one, or
-focus the row (ctrl+x tab, or a click) and press its key.
-
-| Button | Shown | Key | What it does |
-| --- | --- | --- | --- |
-| **File** · **Tree** · **Git** · **Command** | always | | switches the view; each keeps what it showed. Tree and Git open at the working directory the first time; File and Command say how to open them |
-| **Quote selection** | always | `q` | appends the passage selected in the pane to your draft, headed by where it came from |
-| **Source** / **Rendered** | Markdown | `s` | switches between the rendered file and the numbered source |
-| **Changes +3 −1** / **Hide changes** | a changed file | `d` | shows or hides what changed since your last message |
-| **@ path** | file, tree | `a` | appends the file, or the folder last clicked, as an `@` mention, so Claude reads it |
-| **Quote tree** | tree | `t` | appends the tree as `tree` prints it, under the folder, in a code block |
-| **Commit to prompt** | an open commit | `a` | appends the commit's hash and subject |
-| **Refresh** | Git | `r` | reads Git again at once |
-| **Quote output** | command | `t` | appends the whole output under the command, in a code block |
-| **Run again** | command | `r` | runs the command anew, in the folder it ran in, keeping the output shown until it ends |
-| **Copy** | tree, command | `c` | puts the tree or the output on the clipboard |
-| **← Back** | after a link or a click | `b` | returns to where you came from |
-| **Close** | always | | closes the pane |
-| **Open docs/plan.md** | a reply named a `.md` or cited lines | `o` | opens the file it offers, at the lines cited |
-
-A quote's line numbers come from finding the selected text in the file, or from the numbers the
-source view put into the selection. When the text cannot be found (an image's alt text, say), the
-quote is headed by the file alone. A passage from one file's diff in a commit is headed
-`git show abc1234 -- src/a.ts`; one from the message or across files, by the commit alone. A
-passage selected in the conversation is quoted without a heading.
-
-### The pane
-
-- From 110 columns the pane docks beside the transcript, 100 columns wide (at most 45% of the
-  terminal; a width you drag it to wins). Narrower, it sits above the prompt, as tall as its
-  content up to what the screen spares.
-- In a dark theme it takes the terminal's background, as the transcript does, so light text stays
-  readable in the ANSI themes too.
-- Behind another tab, such as `/diff`'s, it comes to the front when `/peek` or the band opens a view.
-  Meanwhile the band holds only the views, **Quote selection** and **Close**.
-- It closes with **Close**, its close mark, or Esc while it has the focus or the prompt is empty and
-  Claude is idle. `/clear` and resuming another conversation close it too, as peek starts over in
-  the next conversation.
 
 ## Settings
 
