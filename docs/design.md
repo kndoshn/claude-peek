@@ -110,6 +110,8 @@ The argument picks the view, by the first rule that applies.
 | an existing folder | Tree | `/peek docs`, `/peek ~`, `/peek ~/repos/github.com/pentim/shok` |
 | anything else | looks among the candidates for those whose name or path holds the text as typed, and opens the best match in its kind of view | `/peek plan`, `/peek shok` |
 
+A path or name may start with `@`, and a path with spaces may be quoted after it (`@"my notes/a b.md"`), as Claude Code's @ completion puts them in: peek reads it without them (`unmention`). `/tree` does the same.
+
 The candidates come in this order.
 
 1. Files the conversation named (those Claude read, wrote or edited, and paths in the text of its

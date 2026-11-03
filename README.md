@@ -58,7 +58,7 @@ Add marketplace with `kndoshn/claude-peek`, then Add plugin.
 
 | You type | peek |
 | --- | --- |
-| `/peek src/a.ts` | opens the file: relative to the working directory, `~/...` or absolute |
+| `/peek src/a.ts` | opens the file: relative to the working directory, `~/...` or absolute, also as `@src/a.ts` from the `@` completion |
 | `/peek src/a.ts:120` or `:120-130` | opens the source at those lines, marked and scrolled to |
 | `/peek docs` | shows the folder's tree; `/peek ~` the home's |
 | `/peek reg` | opens the best match that holds what you typed in its name or path (see below) |

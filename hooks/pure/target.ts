@@ -7,7 +7,7 @@ export type Target =
   | { kind: 'path'; path: string; lines?: [number, number] }
 
 // `!command` runs a command, `git` shows Git, anything else is a path or part of a name, which
-// may end in `:12` or `:12-14` for the lines to open at.
+// may start with @ and end in `:12` or `:12-14` for the lines to open at.
 export function parseTarget(arg: string): Target {
   const text = arg.trim()
   if (text.startsWith('!')) {
@@ -16,7 +16,16 @@ export function parseTarget(arg: string): Target {
   }
   if (text === '') return { kind: 'empty' }
   if (text === 'git') return { kind: 'git' }
-  return { kind: 'path', ...splitLines(text) }
+  return { kind: 'path', ...splitLines(unmention(text)) }
+}
+
+// A path as typed, without the @ (and the quotes around a path with spaces, `@"a b.md"`) that
+// Claude Code's @ completion puts in front; a bare @ stays, as a name to look for.
+export function unmention(arg: string): string {
+  const text = arg.trim()
+  const quoted = /^@"([^"]+)"(.*)$/.exec(text)
+  if (quoted) return `${quoted[1]}${quoted[2]}`
+  return text.length > 1 && text.startsWith('@') ? text.slice(1) : text
 }
 
 // A path and the lines after it, `:12` or `:12-14`, in order; a line 0 is part of the path.

@@ -6,7 +6,7 @@ import { configureLanguage, messages } from './messages'
 import type { Messages } from './messages'
 import { closePane, forgetPane, isPaneShown, navigate, navState, noteBehind, openView, PANE, refit, reopen } from './nav'
 import { rank, suggestion } from './pure/paths'
-import { parseTarget } from './pure/target'
+import { parseTarget, unmention } from './pure/target'
 import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
 import { configureCommand, recentCommands, resetCommand, startCommand } from './views/command'
@@ -80,7 +80,7 @@ async function peekCommand($: Api, args: string): Promise<{ text: string }> {
 async function treeCommand($: Api, args: string): Promise<{ text: string }> {
   const say = await messages($)
   const at = await where($)
-  const text = args.trim()
+  const text = unmention(args)
   const place = text ? await resolvePlace($, at, text, 'place') : { path: at.cwd, isDir: true }
   if (!place) return { text: say.notFound(text) }
   if (!place.isDir) return { text: say.notFolder(place.path) }

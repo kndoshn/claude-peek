@@ -4,7 +4,7 @@ import { diff, hunks } from '../hooks/pure/diff'
 import { clip, fenced, frontMatter, linkify } from '../hooks/pure/markdown'
 import { absolute, closest, describe, dirname, join, named, normalize, rank } from '../hooks/pure/paths'
 import { cite, locate, quote, shellWord, ungutter } from '../hooks/pure/quote'
-import { parseTarget } from '../hooks/pure/target'
+import { parseTarget, unmention } from '../hooks/pure/target'
 import { clean, dropShellNoise, visible } from '../hooks/pure/terminal'
 import { logLineText, parseLog, parseStatus, splitPatch, statusBadges } from '../hooks/pure/git'
 import { sortEntries, treeRows, treeText } from '../hooks/pure/tree'
@@ -200,6 +200,14 @@ test('a /peek argument is a command, git, or a path with an optional line or ran
   expect(parseTarget('src/a.ts:12')).toEqual({ kind: 'path', path: 'src/a.ts', lines: [12, 12] })
   expect(parseTarget('src/a.ts:14-12')).toEqual({ kind: 'path', path: 'src/a.ts', lines: [12, 14] })
   expect(parseTarget('src/a.ts:0')).toEqual({ kind: 'path', path: 'src/a.ts:0' })
+  // A path put in with Claude Code's @ completion reads without its @, or its quotes.
+  expect(parseTarget('@/home/me/repo/')).toEqual({ kind: 'path', path: '/home/me/repo/' })
+  expect(parseTarget('@src/a.ts:12')).toEqual({ kind: 'path', path: 'src/a.ts', lines: [12, 12] })
+  expect(parseTarget('@"my notes/a b.md"')).toEqual({ kind: 'path', path: 'my notes/a b.md' })
+  expect(parseTarget('@"my notes/a b.md":3')).toEqual({ kind: 'path', path: 'my notes/a b.md', lines: [3, 3] })
+  expect(parseTarget('@')).toEqual({ kind: 'path', path: '@' })
+  expect(unmention(' @docs ')).toBe('docs')
+  expect(unmention('docs')).toBe('docs')
 })
 
 test('terminal output loses escape sequences and control characters, and keeps what \r left last', () => {

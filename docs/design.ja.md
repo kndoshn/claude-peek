@@ -77,6 +77,8 @@ Claude に情報を渡すたびに、別のタブで `la`・`tree`・`pwd`・`gs
 | 実在するフォルダー | ツリー | `/peek docs`、`/peek ~`、`/peek ~/repos/github.com/pentim/shok` |
 | それ以外 | 候補から、名前かパスに打った文字をそのまま含むものを探し、いちばん合うものの種類で開く | `/peek plan`、`/peek shok` |
 
+パスや名前は `@` で始めてよく、空白を含むパスは `@` の後を引用符で囲んでよい（`@"my notes/a b.md"`）。Claude Code の @ の補完がこの形で入れるため。peek はこれらを外して読む（`unmention`）。`/tree` も同じ。
+
 候補は次の順に並べる。
 
 1. 会話に出てきたファイル（Claude が Read・Write・Edit したもの、返答の本文に出てきたパス）。本文が `hooks/find.ts:89` のように行を示していれば、`/peek` の候補は行ごと残す。同じファイルを別の行で示していれば、それぞれを候補にする
