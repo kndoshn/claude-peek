@@ -1,376 +1,546 @@
-# claude-peek 設計
+# claude-peek design
 
-Claude Code の中で、ファイル・フォルダー・Git・コマンドの出力を覗き、必要な箇所だけを出どころ付きで Claude に渡す mod。リポジトリは `kndoshn/claude-peek`、プラグイン名は `peek`。使い方は [README](../README.ja.md) にあり、この文書は仕組みとその理由を書く。
+A mod for Claude Code that lets you look at files, folders, Git and command output, and hand Claude
+only the parts you need, each headed by where it came from. The repository is
+`kndoshn/claude-peek`; the plugin is named `peek`. How to use it is in the [README](../README.md);
+this document describes how it works and why.
 
-- [目的と原則](#目的と原則)
-- [画面の構成](#画面の構成)
-- [コマンド](#コマンド)
-- [表示ごとの設計](#表示ごとの設計)（ファイル・ツリー・Git・コマンド）
-- [共通の仕組み](#共通の仕組み)（引用・戻る・読み直し・言語）
-- [設定と制限](#設定と制限)（設定・安全・上限）
-- [実装](#実装)（状態の持ち方・ファイル構成）
-- [テスト](#テスト)
-- [やらないこと](#やらないこと)
+[日本語](design.ja.md)
 
-## 目的と原則
+- [Purpose and principles](#purpose-and-principles)
+- [Layout](#layout)
+- [Commands](#commands)
+- [The views](#the-views) (file, tree, Git, command)
+- [Shared mechanisms](#shared-mechanisms) (quoting, Back, re-reading, language)
+- [Settings and limits](#settings-and-limits) (settings, safety, limits)
+- [Implementation](#implementation) (state, files)
+- [Tests](#tests)
+- [Out of scope](#out-of-scope)
 
-Claude に情報を渡すたびに、別のタブで `la`・`tree`・`pwd`・`gs`・`gd`・`glo`・`glow`・`cat` を実行し、出力の一部をコピーして貼る作業をなくす。タブを閉じ忘れたり、別の repo のタブで作業したりする事故も、タブを開かないことで防ぐ。
+## Purpose and principles
 
-- **見るだけにする**: ファイルの書き換えや Git の操作（ステージ、コミットなど）はしない
-- **見たものは会話に入れない**: Claude に渡るのは、ユーザーが引用した部分だけにする。`!` モードと違い、コンテキストを使わない
-- **出どころを付けて渡す**: ファイルなら行番号、コマンドならコマンドそのものを見出しにする
-- **一時的に使う**: Esc ですぐ閉じ、開き直すと前の表示に戻る
-- **外部のコマンドは、あれば使う**: git・ghq・fd がなくても動く範囲を残す
+Handing Claude information used to mean running `la`, `tree`, `pwd`, `gs`, `gd`, `glo`, `glow` or
+`cat` in another tab, then copying part of the output and pasting it. peek removes that step. Not
+opening a tab also removes the accidents that come with tabs: leaving them open, or working in the
+tab of another repository.
 
-## 画面の構成
+- **Look only**: peek does not write files or run Git operations (staging, committing and so on)
+- **Keep what you look at out of the conversation**: only what the person quotes reaches Claude.
+  Unlike `!` mode, looking uses no context
+- **Head what is handed with where it came from**: a file's line numbers, or the command itself
+- **Be brief to use**: Esc closes it at once, and opening it again returns to where it was
+- **Use external commands when they are there**: what can work without git, ghq or fd still works
 
-### パネル
+## Layout
 
-パネルは 1 枚（id は `peek`）で、4 つの表示を入力欄の上の帯で切り替える。パネルを表示ごとに分けると Claude Code 本体のタブが出るが、タブの切り替えを知らせるイベントがなく、帯のボタンをすぐには表示に合わせられないため。表示ごとの状態（開いているファイル、ツリーの開閉、選んだコミット、最後のコマンド）は、切り替えても残す。
+### The pane
 
-- `columns: 100` と `closeOnEscape` を付けて開く。入力欄の上に出るときは、内容の高さを `rows` に指定する
-- `rows` は見出しを 1 行と数えるので、見出しは折り返さずに切る。パスやブランチは末尾を、コミットは先頭（ハッシュと件名）を、コマンドは先頭と終わり方を残す
-- dark 系のテーマでは背景を `transparent` にし、端末の背景をそのまま見せる。エンジンの既定の背景は、ANSI のテーマでは明るい黒（多くの配色で #555555）になり、明るい文字が読みにくいため
-- コマンド、帯の表示の切り替え、戻るで開いたとき、パネルがほかのタブ（`/diff` など）の後ろにあれば前に出す。後ろにあるパネルへの `$.ui.open` は見出しを変えるだけで、何も起きないように見えるため
-  - `focus: true` を付けて開くと前に出る（入力欄はキーを受けたまま）
-  - 前に出した直後はスクロールが効かないので、行を指定して開くときは 100 ミリ秒待ってからスクロールする
-  - コマンドが終わって高さを合わせ直すときは、前に出さない。その間に人が前に出したタブを隠さないため
-- `/clear` と、別の会話の再開（`session.end` の `reason` が `clear` か `resume`）では、パネルを閉じる。次の会話では peek の状態（`$.state`）が初めからになる（再開ならその会話のものになる）が、エンジンはパネルを開いたまま残す。閉じないと、パネルの中身が案内の文に変わり、帯も消えて、パネルと状態が食い違うため
+There is one pane (id `peek`), and the band above the prompt switches it between four views. A
+pane per view would make Claude Code show its own tabs, but no event reports a switch between
+those tabs, so the band's buttons could not follow the view at once. Each view keeps its state
+(the open file, the folders open in the tree, the chosen commit, the last command) across switches.
 
-### 帯
+- It opens with `columns: 100` and `closeOnEscape`. When it sits above the prompt, `rows` is set
+  to the height of its content
+- `rows` counts the header as one line, so the header is cut rather than wrapped. A path or a
+  branch keeps its end, a commit its start (the hash and subject), a command its start and its end
+- In a dark theme the background is `transparent`, showing the terminal's own. The engine's
+  default background is bright black in the ANSI themes (#555555 in many palettes), on which light
+  text is hard to read
+- When a command, a view switch in the band or Back opens the pane while it is behind another tab
+  (such as `/diff`'s), the pane comes to the front. `$.ui.open` on a pane behind only changes its
+  title, which looks as if nothing happened
+  - Opening with `focus: true` brings it to the front (the prompt keeps the keys)
+  - Scrolling does not take right after it comes to the front, so opening at a line waits
+    100 milliseconds before scrolling
+  - When a command ends and the height is set again, the pane is not brought to the front, so as
+    not to hide a tab the person brought forward meanwhile
+- `/clear` and resuming another conversation (`session.end` with `reason` `clear` or `resume`)
+  close the pane. In the next conversation peek's state (`$.state`) starts over (or becomes that
+  conversation's, on a resume), but the engine leaves the pane open. Left open, its content would
+  turn into a hint and the band would disappear, so the pane and the state would disagree
+
+### The band
 
 ```
-[ファイル] ツリー  Git  コマンド │ [選択を引用]  ソース  変更 +3 −1  @パス  ← 戻る  閉じる
+[File] Tree  Git  Command │ [Quote selection]  Source  Changes +3 −1  @ path  ← Back  Close
 ```
 
-- 左に表示の切り替え、右にいまの表示の操作と、共通の「戻る」「閉じる」を置く。幅が足りなければ折り返す
-- まだ一度も開いていない表示を押すと、既定の対象で開く（ツリーと Git は作業ディレクトリ）。ファイルとコマンドには既定の対象がないので、開き方を案内する
-- ボタンの文字キーは、帯にフォーカスがあるとき（ctrl+x tab かクリック）だけ効く。入力欄からは押せない。数字は使わない（空の入力欄で数字を打つと帯のボタンが押されるため）
-- パネルがほかのタブの後ろにある間は、表示の切り替え、「選択を引用」、「閉じる」だけを出す。表示に効くボタンは、見えていない表示に効いてしまうため。表示の切り替えはパネルを前に出し、引用はそのタブで選んだ部分を見出しなしで入れる。後ろにあるかは、1 秒ごとの見回りで `$.ui.panes()` の `isShown` を見て `nav` に書く
-- 「開く」は、最後の送信からの返答が最後に触れた `.md`（整形して読むので行は付けない）か、`src/a.ts:12` のように行を示したファイルを出す。行のないコード等のファイル名は出さない。返答は作業の途中で多くのファイル名に触れるが、行を示すのはそこを見てほしいときなので。パネルがすでにそのファイルをその行で出していれば出さない
-- 帯に出る操作はいまの表示のものだけなので、表示が違えば同じキーを別の操作に使う（`a` はファイルとツリーでは「@パスを入れる」、Git では「コミットを入れる」）
+- The view switches sit on the left; on the right, the current view's actions, then **← Back**
+  and **Close**, shared by all. The band wraps when it lacks width
+- Pressing a view never opened yet opens it at its default target (the working directory for Tree
+  and Git). File and Command have no default target, so they say how to open them
+- A button's letter key works only while the band has the focus (ctrl+x tab, or a click), not from
+  the prompt. No digits are used, as typing a digit in an empty prompt would press a band button
+- While the pane is behind another tab, the band shows only the view switches, **Quote
+  selection** and **Close**, since a button acting on the view would act on one that is not seen.
+  A view switch brings the pane to the front, and the quote takes what was selected in that tab
+  without a heading. Whether the pane is behind is read every second from `isShown` in
+  `$.ui.panes()` and written to `nav`
+- **Open** offers the `.md` that the replies since the last message touched last (read rendered,
+  so without lines), or a file cited at its lines, as in `src/a.ts:12`. A code file or any other
+  file named without lines is not offered: replies touch many file names along the way, and cite
+  lines when they want a place looked at. Nothing is offered when the pane already shows that file
+  at those lines
+- The band shows only the current view's actions, so the same key serves different actions in
+  different views (`a` is **@ path** in File and Tree, **Commit to prompt** in Git)
 
-| 表示 | 帯の操作 | キー |
+| View | Band actions | Keys |
 | --- | --- | --- |
-| 共通 | 選択を引用 | `q` |
-| ファイル | ソース / 整形（`.md` のとき）、変更 +a −r（変わったとき）、@パスを入れる | `s`・`d`・`a` |
-| ツリー | ツリーを引用、@パスを入れる、コピー | `t`・`a`・`c` |
-| Git | コミットを入れる（コミットを選んだとき）、更新 | `a`・`r` |
-| コマンド | 出力を引用、再実行、コピー | `t`・`r`・`c` |
-| 共通 | ← 戻る（戻り先があるとき）、閉じる | `b` |
-| 返答が `.md` に触れたか、ファイルの行を示したとき | 開く: そのファイル（行を示していればその行）、× | `o` |
+| All | **Quote selection** | `q` |
+| File | **Source** / **Rendered** (for `.md`), **Changes +a −r** (once changed), **@ path** | `s`, `d`, `a` |
+| Tree | **Quote tree**, **@ path**, **Copy** | `t`, `a`, `c` |
+| Git | **Commit to prompt** (with a commit chosen), **Refresh** | `a`, `r` |
+| Command | **Quote output**, **Run again**, **Copy** | `t`, `r`, `c` |
+| All | **← Back** (when there is somewhere to go back to), **Close** | `b` |
+| When a reply touched a `.md` or cited a file's lines | **Open** that file (at the lines, if cited), **×** | `o` |
 
-## コマンド
+## Commands
 
-### `/peek [対象]`
+### `/peek [target]`
 
-引数から表示を決める。上から順に当てはめる。
+The argument picks the view, by the first rule that applies.
 
-| 引数 | 表示 | 例 |
+| Argument | View | Example |
 | --- | --- | --- |
-| なし | 最後に見ていた表示を開き直す。一度も開いていなければ作業ディレクトリのツリー | `/peek` |
-| `!` で始まる | コマンド | `/peek !glo -20` |
+| none | opens the last view again; the first time, the working directory's tree | `/peek` |
+| starts with `!` | Command | `/peek !glo -20` |
 | `git` | Git | `/peek git` |
-| 実在するファイル（末尾に `:行` か `:行-行` を付けてよい） | ファイル | `/peek src/a.ts:120`、`/peek ~/notes/x.md` |
-| 実在するフォルダー | ツリー | `/peek docs`、`/peek ~`、`/peek ~/repos/github.com/pentim/shok` |
-| それ以外 | 候補から、名前かパスに打った文字をそのまま含むものを探し、いちばん合うものの種類で開く | `/peek plan`、`/peek shok` |
+| an existing file (optionally ending in `:line` or `:line-line`) | File | `/peek src/a.ts:120`, `/peek ~/notes/x.md` |
+| an existing folder | Tree | `/peek docs`, `/peek ~`, `/peek ~/repos/github.com/pentim/shok` |
+| anything else | looks among the candidates for those whose name or path holds the text as typed, and opens the best match in its kind of view | `/peek plan`, `/peek shok` |
 
-候補は次の順に並べる。
+The candidates come in this order.
 
-1. 会話に出てきたファイル（Claude が Read・Write・Edit したもの、返答の本文に出てきたパス）。本文が `hooks/find.ts:89` のように行を示していれば、`/peek` の候補は行ごと残す。同じファイルを別の行で示していれば、それぞれを候補にする
-2. プロジェクトのファイルとフォルダー（`git ls-files`、git の外では fd）
-3. ghq の repo（`ghq list -p`。ghq がなければ出さない）
+1. Files the conversation named (those Claude read, wrote or edited, and paths in the text of its
+   replies). When the text cites lines, as in `hooks/find.ts:89`, the candidate for `/peek` keeps
+   them. The same file cited at different lines gives a candidate for each
+2. The project's files and folders (`git ls-files`, or fd outside git)
+3. The repositories of ghq (`ghq list -p`; none without ghq)
 
-それを `rank`（ファイル名に含む → パスに含む → 名前にあいまいに一致 → パスにあいまいに一致）で絞る。同じ順位なら並べた順を保つ。あいまいな一致（打った文字が順に現れるだけのもの）は補完の候補に出すが、コマンドでは開かない（`closest`）。ghq の repo まで含めると、たいていの短い語にどれかがあいまいに一致し、それはほとんど探していたものではないため。何も合わなければ「見つかりません」と、指定の仕方を返す。
+`rank` narrows them (contained in the file name → contained in the path → loosely matching the
+name → loosely matching the path), keeping the order above within a rank. A loose match (the typed
+letters appearing only in order) is offered as a completion, but the command does not open it
+(`closest`): with ghq's repositories included, most short words loosely match something, and that
+is rarely what was looked for. When nothing matches, the command answers "not found" and how to
+name a target.
 
-いちばん合うものが行付きの候補なら、その行で開く。補完の先頭に出るものと、そのまま Enter で開くものを同じにするため。打った行（`/peek find:20`）があればそちらを使い、パスをそのまま打てば先頭から開く。`/md` の候補には行を付けない。Markdown は整形して読むことが多く、行で開くとソース表示になるため。
+When the best match is a candidate with lines, it opens at those lines, so that the first
+completion and what Enter opens are the same. Lines typed (`/peek find:20`) win, and a path typed
+whole opens at the top. `/md` offers candidates without lines: Markdown is mostly read rendered,
+and opening at a line switches to the source.
 
-### `/md [名前]`
+### `/md [name]`
 
-`.md` を読むための入口。候補を `.md` に絞る点と、引数なしで「会話に出てきた最新の `.md`」を開く点が `/peek` と違う。
+The way in for reading `.md` files. It differs from `/peek` in keeping only `.md` candidates and,
+without an argument, opening the newest `.md` the conversation named.
 
-### 引数の補完
+### Completing the argument
 
-`/peek ` や `/md ` に続けて打つと、次を候補に出す（最大 10 件）。
+Typing after `/peek ` or `/md ` offers these (10 at most).
 
-- `!` で始まるとき（`/peek` だけ）: 最近実行したコマンド（`$.store` にセッションをまたいで 20 件まで残す）
-- それ以外: `git`（`/peek` で、打った文字が `git` の先頭と合うとき）と、あいまい検索の候補。候補の行は、名前と、その上のフォルダーを出す
+- Starting with `!` (`/peek` only): the commands run recently (kept in `$.store` across sessions,
+  20 at most)
+- Otherwise: `git` (for `/peek`, when the text typed is a start of `git`) and the fuzzy candidates.
+  Each row shows the name and the folder it is in
 
-1 文字打つごとに一覧し直さないよう、一覧（会話のファイル、プロジェクトのファイル、ghq の repo）と、そこから作った候補の文字列は 5 秒間使い回す。ファイルが 10 万件ある repo では、候補を作るだけで数十ミリ秒かかるため。コマンドで開くときは一覧し直す。
+So as not to list again on every keystroke, the lists (the conversation's files, the project's
+files, ghq's repositories) and the candidate strings made from them are reused for 5 seconds: in
+a repository of 100,000 files, making the candidates alone takes tens of milliseconds. Opening
+with the command lists again.
 
-### 短い別名
+### Short aliases
 
-`/tree [フォルダー]` と `/git` は、設定 `shortCommands` を有効にしたときだけ登録する。公開するプラグインが一般的な名前を占有すると、ほかのプラグインやスキルとぶつかるため、既定では作らない。
+`/tree [folder]` and `/git` are registered only when the setting `shortCommands` is on. A
+published plugin that takes common names collides with other plugins and skills, so they are not
+made by default.
 
-## 表示ごとの設計
+## The views
 
-### ファイル
+### File
 
-`.md` に限らず、テキストのファイルならどれも開く。
+Any text file opens, not only `.md`.
 
-**表示**
+**Drawing**
 
-- `.md`・`.markdown` は整形して表示し、「ソース」で行番号付きの書いたままの表示に切り替える。ほかのファイルは、いつも行番号付きのソースで表示する（`Code` 要素に `path` を渡し、拡張子から色分けの言語を決めさせる）
-- front matter は YAML のブロックとして描く。先頭にある BOM と CRLF の改行を越えて見つける
-- ファイルやフォルダーへの相対リンクをクリックすると、パネルで開く。押したときに `stat` で種類を確かめ、フォルダーはツリーで、ファイルはファイルの表示で開く。GitHub の行の指定（`#L10`、`#L10-L20`。列の `C3` は無視する）があれば、その行で開く。README や設計書からコードやフォルダーへのリンクは多く、GitHub で読むときと同じように辿れるようにするため。URL、`#` だけのアンカー、`/` で始まるパス、画像、コードの中のリンクはそのまま残す。押せるのは 1 回の描画で 256 個までで、それより後のリンクは文字として出す
-- バイナリのファイル（NUL を含む）と、4 MiB を超えるファイル（読み込みの上限）は開かず、理由を出す。90,000 文字を超える部分は表示しない（1 回の描画の上限が 100,000 文字のため）。数の上限は[上限](#上限)にまとめる
+- `.md` and `.markdown` are rendered, and **Source** switches to the file as written, with line
+  numbers. Any other file always shows as numbered source (the `Code` element gets `path` and
+  picks the highlighting language from the extension)
+- Front matter is drawn as a YAML block, also found after a leading BOM and with CRLF line endings
+- Clicking a relative link to a file or folder opens it in the pane. On the click, `stat` tells the
+  kind: a folder opens in the tree, a file in the file view. A GitHub line anchor (`#L10`,
+  `#L10-L20`; a column `C3` is ignored) opens it at those lines. READMEs and design documents link
+  to code and folders often, and this follows them as reading on GitHub does. URLs, anchors alone
+  (`#...`), paths starting with `/`, images and links inside code stay as they are. Up to 256
+  links per drawing are clickable; later ones show as text
+- Binary files (holding a NUL) and files over 4 MiB (the read limit) do not open; the reason is
+  shown. Beyond 90,000 characters nothing is drawn (one drawing takes at most 100,000). The limits
+  are gathered under [Limits](#limits)
 
-**変更の追跡**
+**Tracking changes**
 
-- 前回の送信からの変更を差分で表示する（すべての種類のファイル）
-- 変わった行が 1,000 を超えると、変わった部分をまとめて置き換えたものとして出す。差分を求める時間とメモリーを抑えるため
-- ディスク上の変更を 1 秒ごとに確かめて追う。ディスクから消えたファイルは表示を残し、消えたことを先頭に示す
-- 開いた後でバイナリになったり 4 MiB を超えたりしたファイルは、最後に読んだ内容を出したままにし、次に変わるまで読み直さない
-- 帯の「ファイル」や `/peek`、戻るでこのファイルに戻ったときも、読めないことを理由に断らず、同じように残した内容を出す
+- What changed since the last message shows as a diff (for files of any kind)
+- Past 1,000 changed lines, the changed part shows as replaced whole, to bound the time and memory
+  the diff takes
+- Changes on disk are checked every second. A file deleted on disk stays shown, marked as deleted
+  at the top
+- A file that turns binary or grows past 4 MiB after it opened keeps showing what was last read,
+  and is not read again until it changes again
+- Coming back to such a file through the band's **File**, `/peek` or Back shows the same kept
+  content rather than refusing it as unreadable
 
-**制御文字**
+**Control characters**
 
-描画は、タブと改行のほかに制御文字を受け付けず、1 文字でもあるとパネル全体が描かれない。そこで描くときに、次のように置き換える。
+Drawing accepts no control characters other than tab and newline; a single one leaves the whole
+pane undrawn. So they are replaced when drawn:
 
-- 制御文字はその記号にする（ESC は `␛`、改ページは `␌` のように U+2400 の記号。C1 の範囲は記号がないので `�`）。CRLF の改行は改行にする。どちらも行の数と位置は変えない
-- ファイルの中身だけでなく、パス、ツリーの名前、Git が出す文字列（コミットのメッセージ、差分、状態のパス）にも同じ置き換えをする
-- 持っている文字列はそのままにし、ファイルを開く・引用の行を探すのには元の文字列を使う
+- A control character becomes its picture (`␛` for ESC, `␌` for a form feed: the symbols at
+  U+2400; the C1 range has none, so it becomes `�`). A CRLF line ending becomes a newline. Neither
+  moves or adds a line
+- The same replacement applies to paths, names in the tree and what Git prints (commit messages,
+  diffs, paths in the status), not only file contents
+- The strings held stay as they were; opening files and finding quoted lines use the originals
 
-**行を指定して開く**
+**Opening at a line**
 
-`path:120` や `path:120-130` で開いたときは、ソース表示にして、その行を先頭に送り、背景色で示す。
+Opened with `path:120` or `path:120-130`, the file shows as source, scrolled to put that line at
+the top, marked by a background colour.
 
-- `Code` 要素を 3 つ（指定の行の前、指定の行、後）に分け、指定の行の `Code` を背景色付きの `Box`（キー `peek-line`）で包む。行を指定していないときは `Code` を 1 つで描く
-- 指定の行より前は 20,000 文字までにし、超えれば先頭側を削る。長いファイルの後ろのほうの行を指定しても、その行が描画の上限の内側に入るようにするため
-- `$.ui.open` はパネルを描いてから返るので、そのあと `$.ui.scroll({ to: { key: 'peek-line' }, in: 'peek', block: 'start' })` で 1 回だけ送る（断られても開いたままにする）
-- 先頭には「120 行目」のように行を出す
+- The source is drawn as three `Code` elements (before, the lines, after), the middle one wrapped
+  in a `Box` with a background colour (key `peek-line`). Without lines, a single `Code` is drawn
+- Before the lines, at most 20,000 characters are drawn, cutting the head. Even a line far down a
+  long file stays inside the drawing limit
+- `$.ui.open` returns once the pane is drawn, and then `$.ui.scroll({ to: { key: 'peek-line' },
+  in: 'peek', block: 'start' })` scrolls once (if refused, the pane stays open)
+- The header names the line, as in "line 120"
 
-**引用と @パス**
+**Quotes and @ path**
 
-- 引用の見出しは `docs/plan.md:12-14`。整形した表示では、選んだ文字列を元のファイルから探して行を決める（`locate`）。ソース表示では、選択に入った行番号を読み取る（`ungutter`）。行が分からないときはファイル名だけを付ける
-- 「@パスを入れる」は、表示中のファイルの `@パス` を入力欄に入れる。作業ディレクトリの中なら相対パス、外なら `~/` か絶対パスにする
+- A quote is headed `docs/plan.md:12-14`. In the rendered view the selected text is found in the
+  file to tell the lines (`locate`); in the source view the line numbers in the selection are read
+  (`ungutter`). When the lines cannot be told, the file name alone heads it
+- **@ path** appends the shown file as `@path` to the prompt: relative inside the working
+  directory, `~/` or absolute outside it
 
-### ツリー
+### Tree
 
-`la`・`tree`・`pwd` と、別の repo のパスを調べる作業の代わり。
+Instead of `la`, `tree`, `pwd` and looking up the path of another repository.
 
-**一覧**
+**Listing**
 
-- 先頭に、ルートの絶対パスと、Git の repo ならブランチ（`git status --porcelain=v2 --branch` の `branch.head`。detached HEAD では出さない）を出す
-- 一覧は `$.fs.list` で取る（外部のコマンドは要らない）。フォルダーを先に、名前順（大文字小文字を区別しない）に並べる。隠しファイルも出し、`.git` だけは出さない
-- シンボリックリンクは、たどった先の種類（フォルダーかファイル）で出す。フォルダーへのリンクはクリックで開けるが、最初には開かない。上のフォルダーを指すこともあるため
-- 最初に開くのは、ルートと、その直下のフォルダーのうち行の合計が 200 を超えない範囲。1 つのフォルダーの項目が 100 を超えるときは、残りを「…ほか N 件」の行にまとめ、押すと全部出す。表示する行の合計は 1,000 までにする
+- The header shows the root's absolute path and, in a Git repository, the branch (`branch.head`
+  from `git status --porcelain=v2 --branch`; not shown on a detached HEAD)
+- The listing comes from `$.fs.list` (no external command needed). Folders come first, then names
+  in order, ignoring case. Hidden files show; only `.git` is left out
+- A symbolic link shows as the kind it leads to (folder or file). A linked folder opens on a click
+  but not at first, as it may point to a folder above
+- At first the root opens, and the folders right under it as far as the rows add up to 200 at most.
+  A folder of more than 100 entries shows the rest as one row, "…N more", which shows them all when
+  pressed. The tree shows 1,000 rows at most
 
-**git の印と無視の対象**
+**Git's marks and what Git ignores**
 
-- `git status --porcelain=v2 --branch -z` で状態の印（`M`・`A`・`D`・`R`・`?`）をファイルの右に付け、変更を含むフォルダーには点を付ける。ブランチも同じ出力から読む。状態は表示中のフォルダーの中だけを読み（`-- .`）、upstream との差は数えない（`--no-ahead-behind`。ツリーには出さないため）
-- .gitignore の対象は `git ls-files -z --others --ignored --exclude-standard --directory` で調べ、薄い色で畳んだまま出す。無視されたフォルダー（`node_modules` など）の中も、ツリーで見て Claude に伝えられるようにするため
-- git が丸ごと無視するフォルダーの中をルートにしたときは、git が `./` と答えるので、すべてを薄く出す。そのフォルダーは自分で選んだものなので、小さいフォルダーは最初に開く
-- ルートが repo のどこにあるかは `git rev-parse --show-prefix` で git に聞き、`git status` のパスと突き合わせる。パスの文字列を比べると、シンボリックリンクを通ったパス（macOS の `/tmp` など。git は実際のパスで答える）で印がすべて外れるため
-- この 3 つの git のコマンド（`rev-parse`・`status`・`ls-files`）は並べて動かす。コミットのない repo でも、どれも答える
+- `git status --porcelain=v2 --branch -z` gives the marks (`M`, `A`, `D`, `R`, `?`) shown right of
+  files, and a dot on folders that hold changes. The branch comes from the same output. Only the
+  shown folder's status is read (`-- .`), and the difference from the upstream is not counted
+  (`--no-ahead-behind`), as the tree does not show it
+- What .gitignore covers is found with `git ls-files -z --others --ignored --exclude-standard
+  --directory` and shows dimmed and closed. Even inside an ignored folder (`node_modules` and the
+  like), the tree lets the person look and tell Claude
+- With the root inside a folder Git ignores whole, Git answers `./`, so everything shows dimmed.
+  The person chose that folder, so a small one opens at first
+- Where the root sits in the repository is asked of Git (`git rev-parse --show-prefix`) and
+  matched against the paths of `git status`. Comparing path strings would lose every mark on a path
+  through a symbolic link (such as `/tmp` on macOS; Git answers with the real path)
+- The three Git commands (`rev-parse`, `status`, `ls-files`) run side by side. All of them answer
+  in a repository without commits too
 
-**操作**
+**Actions**
 
-- 行は 1 行ずつボタンにする。フォルダーは開閉し、そのフォルダーを「選択中」にする。ファイルはファイル表示で開く（「戻る」でツリーに戻る）
-- 帯の「@パスを入れる」は選択中のフォルダー（なければルート）の `@パス` を入れる
-- 「ツリーを引用」は、見えているツリーを見出し `tree docs/` を付けたコードブロックで入力欄に入れる。「コピー」は同じ文字列を `$.ui.copy` でクリップボードに入れる
-- ツリーの文字列は `tree` と同じ罫線（`├──`・`└──`・`│`）で作り、状態の印も含める
+- Each row is a button. A folder opens or closes and becomes the "selected" folder. A file opens in
+  the file view (Back returns to the tree)
+- **@ path** in the band appends the selected folder (or the root, when none is) as `@path`
+- **Quote tree** appends the visible tree to the prompt as a code block headed `tree docs/`.
+  **Copy** puts the same string on the clipboard with `$.ui.copy`
+- The tree's string uses the same box drawing as `tree` (`├──`, `└──`, `│`) and includes the marks
 
-**読み直し**（間隔と、全部を読み直すきっかけは[共通の仕組み](#読み直し)）
+**Re-reading** (the interval and what triggers a full read are under [Shared mechanisms](#re-reading))
 
-- タイマーでは、`git status` と、表示中のフォルダー（ルートと開いているフォルダー）の一覧だけを読み、どちらかが前回と変わったときに全部を読み直す。git が無視するものが変わるのは、そのフォルダーの中身が変わるときなので、一覧で気づける
-- フォルダーを開いたときは、閉じている間にできた無視の対象を読むため、次のタイマーで全部を読む
+- On the timer, only `git status` and the listings of the shown folders (the root and the open
+  folders) are read, and everything is read again when either differs from the last time. What Git
+  ignores changes only when a folder's contents change, which the listings notice
+- Opening a folder reads everything on the next tick, to pick up what became ignored while it was
+  closed
 
 ### Git
 
-`gs`・`glo` の代わり。作業中の変更の差分は、組み込みの `/diff` に任せる。
+Instead of `gs` and `glo`. The diff of the work in progress is left to the built-in `/diff`.
 
-**画面**
+**Screen**
 
-- **先頭**: ブランチ、upstream とその差（`↑2 ↓0`）、stash の数。`git status --porcelain=v2 --branch --show-stash -z` の `#` の行から読む
-- **状態**: ステージ済み・未ステージ・未追跡に分けてファイルを出す。行はボタンで、押すとファイル表示で開く。フォルダー（丸ごと未追跡のフォルダー、フォルダーへのリンク、サブモジュール）はツリーで開く。削除したファイルは開けない旨を出す。末尾に「差分は /diff で見られます」と薄く出す
-- **履歴**: `git log --graph --format=%x1f%h%x1f%D%x1f%s%x1f%ar -n 40 --color=never` の 40 件。グラフの線は薄く、ハッシュ・参照（ブランチやタグ）・件名・経過時間を色分けする。コミットの行はボタンで、押すとそのコミットの詳細を出す
-- **コミットの詳細**: 作者・日時・本文、変更したファイルと行数（`git show --stat`）、ファイルごとの差分。差分は `git show --format= --patch --no-color --no-ext-diff --diff-merges=first-parent` をファイルごとに分け、それぞれを `Code` 要素の diff 表示で描く。マージコミットは最初の親との差分にする（`/diff` では過去のコミットを見られないので、ここで埋める）
-- **コミットを入れる**: 選んだコミットを `abc1234（件名）` の形で入力欄に入れる
-- repo の外では「Git のリポジトリではありません」と出す
+- **Header**: the branch, its upstream and how far apart they are (`↑2 ↓0`), and the stash count,
+  read from the `#` lines of `git status --porcelain=v2 --branch --show-stash -z`
+- **Status**: files grouped as staged, not staged and untracked. Each row is a button that opens
+  the file in the file view. A folder (a whole untracked folder, a link to a folder, a submodule)
+  opens in the tree. A deleted file says it cannot be opened. At the end, dimmed: "See diffs with
+  /diff"
+- **History**: 40 commits of `git log --graph --format=%x1f%h%x1f%D%x1f%s%x1f%ar -n 40
+  --color=never`. The graph lines are dimmed; the hash, the refs (branches and tags), the subject
+  and the age are coloured apart. Each commit row is a button that shows the commit's details
+- **Commit details**: the author, the date, the message, the files changed with their line counts
+  (`git show --stat`) and the diff of each file. The diff comes from `git show --format= --patch
+  --no-color --no-ext-diff --diff-merges=first-parent`, split by file, each drawn as a `Code`
+  element in diff mode. A merge commit shows its diff against the first parent (`/diff` cannot
+  show past commits, so this fills that gap)
+- **Commit to prompt**: appends the chosen commit to the prompt as `abc1234 (subject)`
+- Outside a repository the view says it is not a Git repository
 
-**git の動かし方**
+**Running Git**
 
-- `GIT_OPTIONAL_LOCKS=0` で動かす。`git status` が index のロックを取って、Claude が同時に動かす git とぶつかるのを避けるため
-- `core.quotePath=false` も渡す。既定では、ASCII 以外の文字を含むパス（日本語のファイル名など）を引用符で囲み、1 バイトずつ 8 進数で書くので、変更したファイルの一覧も差分の見出しも読めなくなるため。引数を git のものだけに保つよう、環境変数（`GIT_CONFIG_COUNT`・`GIT_CONFIG_KEY_0`・`GIT_CONFIG_VALUE_0`。git 2.31 以降）で渡す
-- それでも `"`・`\`・制御文字を含むパスは引用符で囲まれ、エスケープされるので、差分の見出しでは元のパスに戻す。制御文字は、ほかの文字列と同じく描くときに記号にする（「ファイル」の節）
-- repo のルート（`git rev-parse --show-toplevel`）、状態、履歴、選んだコミットの詳細は、作業ディレクトリから並べて読む。git は repo のどこから聞いても、ルートからのパスで答えるため
+- Git runs with `GIT_OPTIONAL_LOCKS=0`, so that `git status` does not take the index lock and
+  collide with the Git Claude runs at the same time
+- `core.quotePath=false` is passed as well. By default Git quotes a path with non-ASCII characters
+  (Japanese file names, say) and writes each byte in octal, which makes both the list of changed
+  files and the diff headers unreadable. It goes through the environment (`GIT_CONFIG_COUNT`,
+  `GIT_CONFIG_KEY_0`, `GIT_CONFIG_VALUE_0`; Git 2.31 or later), keeping the arguments Git's own
+- Even so, a path holding `"`, `\` or a control character is quoted and escaped, so the diff
+  headers turn it back into the original path. Control characters become pictures when drawn, as
+  for other strings (see the File section)
+- The repository's root (`git rev-parse --show-toplevel`), the status, the history and the chosen
+  commit's details are read side by side from the working directory: Git answers with paths from
+  the root wherever in the repository it is asked
 
-**読み直し**（間隔と、全部を読み直すきっかけは[共通の仕組み](#読み直し)）
+**Re-reading** (the interval and what triggers a full read are under [Shared mechanisms](#re-reading))
 
-- タイマーでは状態（`git status`）だけを読み、その出力が変わったときだけ履歴も読む
-- 開いたときと「更新」を押したときも、全部を読む
-- 開いたコミットの詳細は、コミットの中身が変わらないので読み直さない
+- On the timer only the status (`git status`) is read, and the history only when that output
+  changed
+- Opening the view and pressing **Refresh** read everything as well
+- An open commit's details are not read again, as a commit's content does not change
 
-### コマンド
+### Command
 
-上のどれにも当てはまらない、タブで実行していたコマンドの代わり。
+Instead of the commands left over, those run in another tab that none of the views above covers.
 
-**実行**
+**Running**
 
-- `/peek !コマンド` を、ユーザーのシェル（`$SHELL`、なければ `/bin/sh`）の対話モード（`-ic`）で、作業ディレクトリで実行する。対話モードにするのは、`.zshrc` などで定義したエイリアスと関数（`gs`・`glo`・`la` など）を使えるようにするため
-- 実行時に環境変数 `PEEK=1` を渡す。シェルの設定で Claude Code の中ではエイリアスを切っている場合（`CLAUDECODE` を見る書き方）、その条件に `PEEK` を加えれば、peek の中でだけエイリアスが効く
-- 標準入力は空、時間の上限は 30 秒（設定 `commandTimeoutSeconds`）。実行が断られたとき、上限まで経っていれば止めたことを、そうでなければ実行できなかったことと理由を出す（エンジンの断りの文面には頼らない）
-- `!` モードと同じく、エージェントのサンドボックスの外で動く
-- 実行を始めた時点でパネルを開き、見出しに「実行中…」と出す。終わってから開くと、時間のかかるコマンドの間は何も起きていないように見えるため。終わったら出力の行数に合わせてパネルの高さを決め直す（入力欄の上に出ているとき）。その間にほかの表示へ移っていれば、そのままにする
-- 再実行の間は前の出力を残して「実行中…」を出し、終わったら置き換える。実行中にもう一度押しても実行しない。実行中に別のコマンドを始めたら、後のコマンドの出力を残す
+- `/peek !command` runs in the person's shell (`$SHELL`, else `/bin/sh`) in interactive mode
+  (`-ic`), in the working directory. Interactive mode makes the aliases and functions defined in
+  `.zshrc` and the like (`gs`, `glo`, `la` and so on) work
+- The environment variable `PEEK=1` is set for the run. If the shell's startup file turns aliases
+  off inside Claude Code (by testing `CLAUDECODE`), adding `PEEK` to that test keeps them working
+  in peek alone
+- Standard input is empty, and the time limit is 30 seconds (the setting `commandTimeoutSeconds`).
+  When the run is refused, the view says the command was stopped if the limit had passed, else
+  that it could not run and why (without relying on the engine's wording of the refusal)
+- Like `!` mode, it runs outside the agent's sandbox
+- The pane opens as the run starts, its header saying "running…": opening it only at the end
+  would look like nothing happened during a slow command. Once it ends, the pane's height is set
+  again to the output's line count (when it sits above the prompt), unless another view was shown
+  meanwhile
+- While running again, the previous output stays with "running…" and is replaced at the end.
+  Pressing again during a run does not run it. Starting another command during a run keeps the
+  later command's output
 
-**出力**
+**Output**
 
-- ANSI のエスケープ（色や画面の制御）と、タブと改行以外の制御文字を取り除く。行の中の `\r` は、最後の `\r` より後だけを残す（進捗表示の上書きを再現する）。描画できる文字に限るため
-- 端末のない対話シェルが出す警告（`can't change option: zle` など）は捨てる。ほかの警告が見つかれば、捨てる一覧に加える
-- 先頭にコマンドと終了コード（0 以外は色付き）を出し、1 秒以上かかったときはかかった秒数も出す。同じ出力の再実行でも、実行したことが分かるように。標準出力を `Code` 要素で出し、標準エラー出力があればその下に分けて出す
+- ANSI escapes (colours and screen control) and control characters other than tab and newline are
+  removed. In a line with `\r`, only what follows the last `\r` stays (reproducing progress output
+  that overwrites itself). Only characters that can be drawn are kept
+- Warnings a terminal-less interactive shell prints (such as `can't change option: zle`) are
+  dropped. Others that turn up are added to the list dropped
+- The header shows the command and its exit code (coloured when not 0), and how many seconds it
+  took when that was a second or more, so a run again with the same output still shows it ran.
+  Standard output is drawn in a `Code` element, and standard error, if any, apart below it
 
-**履歴**
+**History**
 
-- 実行したコマンドは `$.store` に 20 件まで残し、補完に出す。Claude の返答に出てきたコマンドを自動で実行することはしない
+- The commands run are kept in `$.store`, 20 at most, and offered as completions. Commands that
+  appear in Claude's replies are never run automatically
 
-## 共通の仕組み
+## Shared mechanisms
 
-### 引用
+### Quoting
 
-選択の出どころによって見出しを付け、引用として入力欄の末尾に足す（下書きとの間は空行で区切る）。
+A selection is headed by where it came from and appended to the prompt as a quote, after the draft
+and a blank line.
 
-| 出どころ | 見出し |
+| Source | Heading |
 | --- | --- |
-| ファイル | `docs/plan.md:12-14`（行が分からなければ `docs/plan.md`） |
-| ツリー | `tree docs/` |
-| Git の状態 / 履歴 / コミットの詳細 | `git status` / `git log` / `git show abc1234`（1 つのファイルの差分の中なら `git show abc1234 -- src/a.ts`） |
-| コマンド | `$ ls -la` |
+| File | `docs/plan.md:12-14` (`docs/plan.md` when the lines are not known) |
+| Tree | `tree docs/` |
+| Git status / history / commit details | `git status` / `git log` / `git show abc1234` (`git show abc1234 -- src/a.ts` inside one file's diff) |
+| Command | `$ ls -la` |
 
-- `$.ui.selection()` が `requestId` を返したときは、選択は会話の中にあるので、見出しを付けずに引用する
-- `requestId` がないことは、会話の外（パネル）の選択だけでなく、会話の複数の行にまたがる選択でも起こる。そのため、ないことからはパネルの選択だと決められず、文字列の照合で判断する
-- いまの表示の文字列の中から選択を探し、見つかればその出どころの見出しを付ける。見つからなければ、ファイル表示ではファイル名だけを付け、ほかの表示では見出しを付けない
-- コミットの詳細では、選択が 1 つのファイルの差分（ファイル名の行を含む）の中にだけ見つかれば、見出しにそのファイルも付ける。差分は短い行が多く、どのファイルの行かが分からないと Claude が探し直すため。メッセージや変更の行数にも見つかる選択、複数のファイルにまたがる選択や、どちらのファイルにもある行は、コミットだけを見出しにする。パスは、シェルがそのまま読めない文字を含むときシングルクォートで囲み、見出しをそのまま実行できる形に保つ
+- When `$.ui.selection()` returns a `requestId`, the selection is in the conversation, and the
+  quote has no heading
+- A missing `requestId` happens not only for selections outside the conversation (in the pane) but
+  also for a selection across several rows of the conversation. So its absence does not prove a
+  pane selection, and matching strings decides
+- The selection is looked for in the strings of the current view; when found, it is headed by its
+  source. When not found, the file view heads it with the file name alone, and the other views
+  give no heading
+- In commit details, when the selection is found only inside one file's diff (including its file
+  name line), the heading names that file too. Diff lines are short, and without the file Claude
+  searches the commit again. A selection also found in the message or the line counts, one across
+  files, or a line both files hold is headed by the commit alone. A path holding characters the
+  shell cannot read as they are is put in single quotes, keeping the heading runnable as it is
 
-### 戻る
+### Back
 
-表示をまたいだ履歴を 1 本持つ。
+One history runs across the views.
 
-- リンクやクリックで移ったとき（ツリーからファイル、Git からファイル、Markdown のリンク、履歴からコミットの詳細）に、移る前の場所を積む
-- `/peek` や `/md` で開いたときは履歴を空にする
-- 戻り先が読めなければ、その項目を捨ててその旨を出す
+- Moving by a link or a click (tree to file, Git to file, a Markdown link, history to commit
+  details) pushes the place left
+- Opening with `/peek` or `/md` empties the history
+- When the place to return to cannot be read, that entry is dropped and the view says so
 
-### 読み直し
+### Re-reading
 
-`session.start` で 1 秒ごとのタイマーを 1 つだけ動かし、表示ごとに次を判断する。
+`session.start` runs a single one-second timer, which decides for each view:
 
-| 表示 | 間隔 | 条件 |
+| View | Interval | Condition |
 | --- | --- | --- |
-| ファイル | 1 秒 | ファイルを開いている間。更新時刻が変わったときだけ読む |
-| ツリー | 5 秒 | パネルが表示中（`$.ui.panes()` の `isShown`）で、ツリーを表示しているとき |
-| Git | 5 秒 | 同上、Git を表示しているとき |
-| コマンド | なし | 「再実行」を押したときだけ |
+| File | 1 second | while a file is open; read only when its modification time changed |
+| Tree | 5 seconds | while the pane is shown (`isShown` in `$.ui.panes()`) with the tree in it |
+| Git | 5 seconds | the same, with Git in it |
+| Command | none | only when **Run again** is pressed |
 
-- ツリーと Git は、タイマーでは変わったかどうかを少ない読み込みで確かめ（Git は `git status`、ツリーはそれと表示中のフォルダーの一覧）、変わったときだけ全部を読む。大きな repo では git のコマンドが作業ツリーを読むたびに時間がかかるため
-- Claude のターンが終わったときと、Claude がシェルのコマンドを実行したりファイルを編集したりしたあと（Bash・Write・Edit・MultiEdit・NotebookEdit）に、ツリーと Git を「古い」と印を付け、次のタイマーで全部を読み直す
-- 読み込みが重ならないよう、前の読み直しが終わるまで次は始めない。互いに関係しない読み込み（git のコマンド、フォルダーの一覧）は並べて動かす
-- 読んだ結果が表示中のものと同じなら値を書き込まず、パネルを描き直さない
+- On the timer, Tree and Git check with few reads whether anything moved (Git with `git status`,
+  Tree with that and the listings of the shown folders), and read everything only when it did. In
+  a large repository each Git command that reads the working tree takes time
+- When Claude's turn ends, and after Claude runs a shell command or edits a file (Bash, Write,
+  Edit, MultiEdit, NotebookEdit), Tree and Git are marked stale and read whole on the next tick
+- A read does not start until the previous one ends, so reads never overlap. Reads that do not
+  depend on each other (Git commands, folder listings) run side by side
+- When a read gives what is already shown, nothing is written and the pane is not redrawn
 
-### 言語
+### Language
 
-設定 `language`（`auto`・`en`・`ja`）。`auto` は Claude Code の `language` の設定、次にロケール、どれもなければ英語。
+The setting `language` (`auto`, `en`, `ja`). `auto` follows Claude Code's `language` setting, then
+the locale, else English.
 
-## 設定と制限
+## Settings and limits
 
-### 設定（userConfig）
+### Settings (userConfig)
 
-| 項目 | 値 | 既定値 |
+| Key | Values | Default |
 | --- | --- | --- |
-| `language` | `auto`・`en`・`ja` | `auto` |
-| `shortCommands` | `/tree` と `/git` も登録する | `false` |
-| `commandTimeoutSeconds` | コマンドの時間の上限（1〜600） | `30` |
+| `language` | `auto`, `en`, `ja` | `auto` |
+| `shortCommands` | also register `/tree` and `/git` | `false` |
+| `commandTimeoutSeconds` | the command time limit (1 to 600) | `30` |
 
-### 制限と安全
+### Limits and safety
 
-- 読むだけで、書き込みは `$.store` のコマンドの履歴だけ
-- コマンド表示は、ユーザーが打ったコマンドだけを実行する。サンドボックスの外で動くのは `!` モードと同じ
-- 描画は 1 回 100,000 文字までなので、本文・出力・差分は 90,000 文字で切り、切ったことを先頭に出す。差分は hunk の切れ目で切る
-- 外部のコマンドは、git（ツリーの印、Git 表示、プロジェクトのファイル）、ghq（repo の候補）、fd（git の外のファイルの候補）。どれもなければ、その部分を出さずに動く
+- peek only reads; the only thing it writes is the command history in `$.store`
+- The command view runs only commands the person typed. It runs outside the sandbox, as `!` mode
+  does
+- One drawing takes at most 100,000 characters, so text, output and diffs are cut at 90,000, and
+  the header says so. A diff is cut between hunks
+- External commands: git (the tree's marks, the Git view, the project's files), ghq (repository
+  candidates), fd (file candidates outside git). Without any of them, peek works and leaves out
+  what it would add
 
-### 上限
+### Limits
 
-| 対象 | 上限 | 超えたとき | 定数 |
+| What | Limit | Past it | Constant |
 | --- | --- | --- | --- |
-| 開くファイルの大きさ | 4 MiB | 開かない。開いた後なら、それまでの表示を残す | `MAX_READ_BYTES`（`find.ts`） |
-| 1 回に描く文字数 | 90,000 文字 | 切って、先頭に示す | `DRAW_LIMIT`（`pure/markdown.ts`） |
-| 行を指定して開いたときの、その行より前の文字数 | 20,000 文字 | 先頭側を削る | `BEFORE_LIMIT`（`ui/file.tsx`） |
-| 1 回の描画で押せるリンク | 256 個 | 残りは文字として出す | `MAX_LINKS`（`ui/file.tsx`） |
-| 差分を求める変わった行 | 1,000 行 | 変わった部分をまとめて置き換えたものとして出す | `MAX_EDITS`（`pure/diff.ts`） |
-| ツリーで最初に開く行 | 200 行 | 小さいフォルダーから、収まる分だけ開く | `FIRST_ROWS`（`views/tree.ts`） |
-| 1 つのフォルダーの項目 | 100 件 | 残りを「…ほか N 件」の行にまとめる | `PER_DIR`（`pure/tree.ts`） |
-| ツリーの行 | 1,000 行 | 切って、先頭に示す | `MAX_ROWS`（`pure/tree.ts`） |
-| 履歴のコミット | 40 件 | 出さない | `LOG_COUNT`（`views/git.ts`） |
-| コマンドの時間 | 30 秒（設定で 1〜600） | 止めて、そのことを出す | 設定 `commandTimeoutSeconds` |
-| 残すコマンドの履歴 | 20 件 | 古いものから消す | `HISTORY`（`views/command.ts`） |
-| 補完の候補 | 10 件 | 出さない | `MAX_SUGGESTIONS`（`register.tsx`） |
+| Size of a file to open | 4 MiB | not opened; once open, what was shown stays | `MAX_READ_BYTES` (`find.ts`) |
+| Characters in one drawing | 90,000 | cut, said in the header | `DRAW_LIMIT` (`pure/markdown.ts`) |
+| Characters before the lines a file opens at | 20,000 | the head is cut | `BEFORE_LIMIT` (`ui/file.tsx`) |
+| Clickable links in one drawing | 256 | the rest show as text | `MAX_LINKS` (`ui/file.tsx`) |
+| Changed lines a diff is worked out for | 1,000 | the changed part shows as replaced whole | `MAX_EDITS` (`pure/diff.ts`) |
+| Rows the tree opens at first | 200 | the smaller folders open, as many as fit | `FIRST_ROWS` (`views/tree.ts`) |
+| Entries of one folder | 100 | the rest become one "…N more" row | `PER_DIR` (`pure/tree.ts`) |
+| Rows of the tree | 1,000 | cut, said in the header | `MAX_ROWS` (`pure/tree.ts`) |
+| Commits in the history | 40 | not shown | `LOG_COUNT` (`views/git.ts`) |
+| Time a command runs | 30 seconds (1 to 600 by the setting) | stopped, and the view says so | the setting `commandTimeoutSeconds` |
+| Commands kept in the history | 20 | the oldest go | `HISTORY` (`views/command.ts`) |
+| Completions | 10 | not shown | `MAX_SUGGESTIONS` (`register.tsx`) |
 
-## 実装
+## Implementation
 
-### 状態の持ち方
+### State
 
-状態はファイルごとに 1 つの値（atom）にまとめ、その値を読み書きするのはそれを宣言したファイルだけにする（Claude Code が mod の読み書きする値を、ファイルごとの atom から一覧にするため）。
+State is gathered into one value (atom) per file, and only the file that declares a value reads
+and writes it (Claude Code lists what a mod reads and writes from these per-file atoms).
 
-| 値 | 中身 |
+| Value | Holds |
 | --- | --- |
-| `nav` | パネルが開いているか、いまの表示、戻る履歴 |
-| `file` | パス、ラベル、本文、更新時刻、変更の基準（前回の送信時の本文）、消えたか、ソース / 整形 / 変更、指定の行 |
-| `tree` | ルートとその表し方、ブランチ、開いているフォルダー、全部出すフォルダー、選択中、フォルダーごとの一覧、Git の印、無視の対象 |
-| `git` | repo のルートとその表し方、状態、履歴、選んだコミットとその詳細 |
-| `command` | コマンド、実行した作業ディレクトリ（「再実行」も同じ場所で動かす）、標準出力、標準エラー出力、終了コード、時間の上限で止めたときはその秒数 |
-| `offer` | 返答が触れた `.md` か、行を示したファイル。帯で開くか消すまで出す |
+| `nav` | whether the pane is open, the current view, the Back history |
+| `file` | the path, the label, the text, the modification time, the baseline for changes (the text at the last message), whether it was deleted, source / rendered / changes, the lines opened at |
+| `tree` | the root and how it is written, the branch, the open folders, the folders shown whole, the selected folder, each folder's listing, Git's marks, what Git ignores |
+| `git` | the repository's root and how it is written, the status, the history, the chosen commit and its details |
+| `command` | the command, the working directory it ran in (**Run again** runs there too), standard output, standard error, the exit code, and the seconds it was stopped at when it hit the time limit |
+| `offer` | the `.md` a reply touched or the file it cited lines of; kept until opened or dismissed from the band |
 
-- 表示を分けて持つのは、5 秒ごとの Git の読み直しが、ほかの表示の描画を巻き込まないようにするため
-- 読んだ時刻、読み直しの印、最後に読んだ `git status` の出力は値に入れず、モジュールの変数に持つ。描画に使わないものを書き込んで、パネルを描き直さないため
+- The views are held apart so that Git's read every 5 seconds does not redraw the other views
+- The time of the last read, the stale marks and the last `git status` output are held in module
+  variables, not in values: writing what drawing does not use would redraw the pane
 
-### ファイル構成
+### Files
 
 ```
 hooks/
-  register.tsx      イベントとコマンドをつなぐだけ
-  nav.ts            いまの表示と戻る履歴、パネルを開く・閉じる
-  views/file.ts     ファイル表示の状態と操作
-  views/tree.ts     ツリー表示の状態と操作
-  views/git.ts      Git 表示の状態と操作
-  views/command.ts  コマンド表示の状態と操作、実行の履歴（$.store）
-  find.ts           対象の解決とあいまい検索の候補（会話・プロジェクト・ghq）、ファイルの読み込み
-  prompt.ts         入力欄への引用と @ の追加
-  run.ts            index のロックを取らない git の実行、時計、表示を読み直す間隔
-  ui/*.tsx          パネルと帯、表示ごとの描画
+  register.tsx      only wires events and commands
+  nav.ts            the current view and the Back history, opening and closing the pane
+  views/file.ts     the file view's state and steps
+  views/tree.ts     the tree view's state and steps
+  views/git.ts      the Git view's state and steps
+  views/command.ts  the command view's state and steps, the history of runs ($.store)
+  find.ts           resolving targets and the fuzzy candidates (conversation, project, ghq), reading files
+  prompt.ts         quoting into the prompt and adding @ mentions
+  run.ts            running Git without the index lock, the clock, how often views are read again
+  ui/*.tsx          the pane and the band, each view's drawing
   pure/
-    paths.ts        パスの解決とラベル、会話に出たファイル、候補の並べ替え
-    quote.ts        引用の見出しと、選択した文字列の行の特定
-    markdown.ts     リンク、front matter、描画の上限での切り詰め
-    diff.ts         行の差分と hunk
-    git.ts          git の出力の解析（status v2、グラフ付きの log、show のファイルごとの分割）
-    tree.ts         一覧から行とツリーの文字列を組み立てる
-    terminal.ts     コマンドの出力からの ANSI と制御文字の除去と \r の処理、ほかの文字列の制御文字の記号への置き換え
-    target.ts       /peek の引数の解析（!、git、path:行）
-  messages.ts       英語と日本語のメッセージ、言語の判定
+    paths.ts        resolving and labelling paths, the files the conversation named, ranking candidates
+    quote.ts        quote headings and finding the lines of selected text
+    markdown.ts     links, front matter, cutting at the drawing limit
+    diff.ts         line diffs and hunks
+    git.ts          parsing Git's output (status v2, log with a graph, show split by file)
+    tree.ts         building rows and the tree's string from listings
+    terminal.ts     removing ANSI and control characters from command output and handling \r, turning control characters in other strings into pictures
+    target.ts       parsing /peek's argument (!, git, path:line)
+  messages.ts       the messages in English and Japanese, choosing the language
 ```
 
-## テスト
+## Tests
 
-- 純粋な関数（`pure/`）は、直接テストする。git の出力の解析は、実際の出力の例（リネーム、未追跡、upstream なし、detached HEAD、マージを含むグラフ、空の repo、引用符で囲まれたパス）で確かめる
-- 表示ごとに、Claude Code のテストキットで動きを確かめる。`process.run` は argv で振り分けて、git・ghq・シェルの出力を差し替える。`$.fs` もシンボリックリンクを含めて差し替える。読み直しは模擬の時計を進めて確かめる
-- テストキットは、描いた要素を実際の画面と同じ規則で検査し、通らない描画をテストの失敗として報告する。制御文字を含むファイルの中身・名前・Git の出力は、描いた文字列が記号に置き換わっていることを表示ごとに確かめる
-- テストキットでは確かめられないものは、実際の画面で確かめる（下の一覧）
+- The pure functions (`pure/`) are tested directly. Parsing Git's output is checked against real
+  output (renames, untracked files, no upstream, a detached HEAD, a graph with merges, an empty
+  repository, quoted paths)
+- Each view's behaviour is checked with Claude Code's test kit. `process.run` dispatches on argv to
+  stand in for the output of git, ghq and the shell. `$.fs` is stood in for too, symbolic links
+  included. Re-reading is checked by advancing a mock clock
+- The test kit checks the drawn elements by the same rules as the real screen and reports a
+  drawing that fails them as a failed test. For file contents, names and Git output holding control
+  characters, each view checks that the drawn strings have pictures in their place
+- What the test kit cannot check is checked on the real screen (the list below)
 
-### 実際の画面での確認
+### Checked on the real screen
 
-tmux の中で Claude Code 2.1.316 を動かし、次を確かめてある。
+With Claude Code 2.1.316 running in tmux, these have been checked:
 
-- 行を指定して開くと、開いた直後のパネルでその行が上のほうまで送られ、背景色で示される。Markdown のリンクの `#L40-L42` から開いても同じ
-- 1,000 行のツリーでも、残りを出すクリック、スクロール、ファイルを開くクリックがすぐ反応する
-- `$SHELL -ic` は対話用の設定（zsh）を読んでも 1 秒かからず、余計な警告も出ない
-- 組み込みの `/diff` と同時に開くと、横のパネルにタブが並び、クリックで切り替わる。`/diff` のタブを見ている間は、1 秒以内に帯が表示の切り替えと引用と閉じるだけになる。そこから `/peek` や帯の表示の切り替えで peek のタブが前に出て、行を指定していればその行まで送られ、入力欄はキーを受けたまま
+- Opening at a line scrolls that line near the top of the freshly opened pane, marked by a
+  background colour. The same holds when opened from a Markdown link's `#L40-L42`
+- In a tree of 1,000 rows, the click that shows the rest, scrolling and the click that opens a
+  file respond at once
+- `$SHELL -ic` reads the interactive startup files (zsh) in under a second and prints no stray
+  warnings
+- Opened together with the built-in `/diff`, the tabs line up in the side pane and switch on a
+  click. While `/diff`'s tab is shown, the band narrows within a second to the view switches,
+  **Quote selection** and **Close**. From there `/peek` or a view switch in the band brings peek's
+  tab to the front, scrolled to the lines if given, with the prompt keeping the keys
 
-dark 以外のテーマでの色は、まだ確かめていない。`/theme` はユーザーの設定を書き換えるので、手元の設定を変えずに確かめる方法がないため。
+Colours in themes other than dark are not checked yet: `/theme` rewrites the person's settings, and
+there is no way to check without changing the local settings.
 
-## やらないこと
+## Out of scope
 
-- 作業中の変更の差分。組み込みの `/diff` がファイルの一覧、ターンごとの変更、`ask` ボタンまで備えている
-- ファイルの編集と Git の操作
-- 送信で自動で閉じる動き。Claude の修正を横で確かめ続けることが多いため
-- 終わらないコマンドの出力を流し続ける表示（`tail -f` など）。必要になれば `$.process.spawn` で足す
-- コマンドの出力の色。取り除いて表示し、必要になれば ANSI の色を `Text` の色に置き換えて足す
+- The diff of the work in progress. The built-in `/diff` already has the file list, the changes by
+  turn and the `ask` button
+- Editing files and Git operations
+- Closing on send. Watching Claude's fixes beside the chat is common
+- A view that keeps streaming the output of a command that does not end (`tail -f` and the like).
+  If needed, `$.process.spawn` can add it
+- Colours in command output. They are removed; if needed, ANSI colours can be mapped to `Text`
+  colours

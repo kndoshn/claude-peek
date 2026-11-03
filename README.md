@@ -207,7 +207,7 @@ quote is headed by the file alone. A passage from one file's diff in a commit is
 
 ## Develop
 
-The design is in [docs/design.md](docs/design.md), written in Japanese.
+The design is in [docs/design.md](docs/design.md).
 
 ```
 claude --plugin-dir .            # run a session with this folder loaded; saving a file reloads it

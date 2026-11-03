@@ -201,7 +201,7 @@ Claude の返答が `hooks/find.ts:89` のように行を示すと、`/peek` は
 
 ## 開発
 
-設計は [docs/design.md](docs/design.md) にあります。
+設計は [docs/design.ja.md](docs/design.ja.md) にあります。
 
 ```
 claude --plugin-dir .            # このフォルダーを読み込んでセッションを始める。保存すると読み直す
