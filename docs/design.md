@@ -329,7 +329,11 @@ Instead of the commands left over, those run in another tab that none of the vie
 - The environment variable `PEEK=1` is set for the run. If the shell's startup file turns aliases
   off inside Claude Code (by testing `CLAUDECODE`), adding `PEEK` to that test keeps them working
   in peek alone
-- Standard input is empty, and the time limit is 30 seconds (the setting `commandTimeoutSeconds`).
+- Standard input is `/dev/null`, as when nothing is typed in a terminal. Given an empty pipe, a
+  tool that takes a pipe as its input in place of the folder (`rg`, say) searches the pipe and
+  finds nothing. The engine writes only text to a pipe, so `/bin/sh` points standard input at
+  `/dev/null` and starts the shell (`exec "$0" -ic "$1" </dev/null`), for any shell
+- The time limit is 30 seconds (the setting `commandTimeoutSeconds`).
   When the run is refused, the view says the command was stopped if the limit had passed, else
   that it could not run and why (without relying on the engine's wording of the refusal)
 - Like `!` mode, it runs outside the agent's sandbox

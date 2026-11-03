@@ -71,7 +71,10 @@ async function execute($: Api, text: string, dir: string): Promise<Omit<CommandR
     return started !== undefined && ended !== undefined ? ended - started : undefined
   }
   try {
-    const result = await $.process.run([shell, '-ic', text], {
+    // stdin is /dev/null, as with nothing typed in a terminal: a tool that takes a pipe as its
+    // input in place of the folder (rg, say) would search an empty pipe and find nothing. sh sets
+    // it up, for any shell, as the engine only writes text to a pipe.
+    const result = await $.process.run(['/bin/sh', '-c', 'exec "$0" -ic "$1" </dev/null', shell, text], {
       cwd: dir,
       env: { PEEK: '1' },
       stdin: '',

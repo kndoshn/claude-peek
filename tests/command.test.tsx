@@ -9,7 +9,10 @@ test('/peek !command runs it in the person\'s interactive shell and shows its ou
   r.commands['/bin/zsh'] = { exitCode: 0, stdout: 'a.md\nb.md\n' }
 
   expect((await peek($, '!ls -la')).text).toBe('Opened $ ls -la')
-  expect(r.ran).toEqual([{ argv: ['/bin/zsh', '-ic', 'ls -la'], cwd: CWD, env: { PEEK: '1' }, stdin: '', timeoutMs: 30000 }])
+  // Its stdin is /dev/null, as with no input in a terminal: rg searches the folder, not stdin.
+  expect(r.ran).toEqual([
+    { argv: ['/bin/sh', '-c', 'exec "$0" -ic "$1" </dev/null', '/bin/zsh', 'ls -la'], cwd: CWD, env: { PEEK: '1' }, stdin: '', timeoutMs: 30000 },
+  ])
   // Opened while it ran, then fitted to its output.
   expect(r.opened).toEqual(['$ ls -la', '$ ls -la'])
   const { header, headingWrap, codes } = await pane($)
@@ -24,7 +27,7 @@ test('without a SHELL the command runs in /bin/sh', async ($, on) => {
   r.commands['/bin/sh'] = { exitCode: 0, stdout: 'ok' }
 
   await peek($, '!echo ok')
-  expect(r.ran[0]?.argv).toEqual(['/bin/sh', '-ic', 'echo ok'])
+  expect(r.ran[0]?.argv).toEqual(['/bin/sh', '-c', 'exec "$0" -ic "$1" </dev/null', '/bin/sh', 'echo ok'])
 })
 
 test('the output loses its colours, carriage returns and the shell\'s warnings; errors show apart', async ($, on) => {

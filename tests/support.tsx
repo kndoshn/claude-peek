@@ -161,7 +161,9 @@ export function engine(on: On, files: Files, messages: Message[] = []) {
   })
   on('process.run', async (_, e) => {
     record.ran.push({ argv: [...e.argv], cwd: e.init?.cwd, env: e.init?.env, stdin: e.init?.stdin, timeoutMs: e.init?.timeoutMs })
-    const custom = record.commands[e.argv.join(' ')] ?? record.commands[e.argv[0] ?? '']
+    // A command peek runs in the person's shell is keyed by that shell.
+    const shell = e.argv[0] === '/bin/sh' && e.argv[1] === '-c' ? e.argv[3] : undefined
+    const custom = record.commands[e.argv.join(' ')] ?? record.commands[shell ?? e.argv[0] ?? '']
     const run =
       e.argv[0] === 'git' && e.argv[1] === 'ls-files' && !e.argv.includes('--ignored') && !custom
         ? record.git
