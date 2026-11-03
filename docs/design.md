@@ -32,7 +32,7 @@ tab of another repository.
 - **Be brief to use**: Esc closes it at once, and opening it again returns to where it was
 - **Use external commands when they are there**: what can work without git, ghq or fd still works
 - **Run nothing the person types**: peek runs only the commands it needs to read (git, ghq, fd).
-  Showing any command's output as a terminal would needs a terminal (see [Out of scope](#out-of-scope))
+  Showing any command's output as a terminal shows it takes a terminal (see [Out of scope](#out-of-scope))
 
 ## Layout
 
