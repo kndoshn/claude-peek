@@ -78,7 +78,8 @@ name whose best match is one opens there. Lines you type win, and a whole path o
 
 While you type, `/peek re` completes to matching files, folders and repositories, with the folder
 each is in beside it, and `/peek !g` to the commands you ran before that start so. When a reply
-names a `.md` file, the row above the prompt offers **Open docs/plan.md**; **×** dismisses it.
+names a `.md` file or cites lines of a file, the row above the prompt offers **Open docs/plan.md**
+or **Open src/a.ts:118-120**, which opens it at those lines; **×** dismisses it.
 
 ### File view
 
@@ -161,7 +162,7 @@ focus the row (ctrl+x tab, or a click) and press its key.
 | **Copy** | tree, command | `c` | puts the tree or the output on the clipboard |
 | **← Back** | after a link or a click | `b` | returns to where you came from |
 | **Close** | always | | closes the pane |
-| **Open docs/plan.md** | a reply named a `.md` | `o` | opens the file it offers |
+| **Open docs/plan.md** | a reply named a `.md` or cited lines | `o` | opens the file it offers, at the lines cited |
 
 A quote's line numbers come from finding the selected text in the file, or from the numbers the
 source view put into the selection. When the text cannot be found (an image's alt text, say), the

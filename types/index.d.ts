@@ -2,6 +2,9 @@
 // inside it, from the home with ~/ elsewhere.
 export type MdFile = { path: string; label: string }
 
+// What the band offers to open: a .md a reply named, or a file at the lines a reply cited.
+export type Offer = MdFile & { lines?: [number, number] }
+
 // What the pane can show, one view at a time.
 export type ViewName = 'file' | 'tree' | 'git' | 'command'
 
@@ -127,8 +130,8 @@ declare module 'claude-code' {
       command: Shaped<CommandRun | null>
       tree: Shaped<TreeState | null>
       git: Shaped<GitState | null>
-      // The .md the last reply named, offered in the band until opened or dismissed.
-      offer: Shaped<MdFile | null>
+      // What the last reply pointed at, offered in the band until opened or dismissed.
+      offer: Shaped<Offer | null>
     }
   }
 }

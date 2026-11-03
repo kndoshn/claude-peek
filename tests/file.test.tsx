@@ -606,6 +606,32 @@ test('the offer can be dismissed, and opening another file keeps it', async ($, 
   expect(await button($, 'offer')).toBeUndefined()
 })
 
+test('a reply citing lines of a file offers them in the band, which opens the file there', async ($, on) => {
+  const code = 'one\ntwo\nthree\nfour'
+  const messages: Message[] = [user('why?'), assistant('Edited src/b.ts. The bug is at src/a.ts:2-3.')]
+  engine(on, { '/proj/src/a.ts': code, '/proj/src/b.ts': code }, messages)
+  await turnEnds($)
+
+  expect(await button($, 'offer')).toBe('Open src/a.ts:2-3')
+  await press($, 'offer')
+  expect((await pane($)).header).toBe('src/a.ts · 4 lines · lines 2-3')
+  expect(await button($, 'offer')).toBeUndefined()
+
+  // Shown at those lines, it is not offered again; at others, it is, until opened there.
+  await turnEnds($)
+  expect(await button($, 'offer')).toBeUndefined()
+  await peek($, 'src/a.ts')
+  await turnEnds($)
+  expect(await button($, 'offer')).toBe('Open src/a.ts:2-3')
+  await peek($, 'src/a.ts:2-3')
+  expect(await button($, 'offer')).toBeUndefined()
+
+  // A file named without lines is not offered, unless it is Markdown.
+  messages.push(user('and?'), assistant('Edited src/b.ts.'))
+  await turnEnds($)
+  expect(await button($, 'offer')).toBeUndefined()
+})
+
 test('a reply naming no .md since the last prompt offers nothing', async ($, on) => {
   engine(on, { '/proj/a.md': 'a' }, [assistant('see a.md'), user('thanks'), assistant('ok')])
   await turnEnds($)

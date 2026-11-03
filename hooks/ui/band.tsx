@@ -1,5 +1,5 @@
 // The band above the prompt: the views to switch between, the shown view's buttons while the
-// pane is open, and the offer of the .md the last reply named.
+// pane is open, and the offer of what the last reply pointed at.
 
 import type { EngineInterface, RenderElement, RenderInput, UiPressArgument } from 'claude-code'
 
@@ -9,6 +9,7 @@ import { messages } from '../messages'
 import { closePane, goBack, navigate, navState, refit, switchView } from '../nav'
 import { mention, quoteAll, quoteSelection } from '../prompt'
 import { count } from '../pure/diff'
+import { cite } from '../pure/quote'
 import { commandOutput, rerunCommand } from '../views/command'
 import { changesOf, dismissOffer, offeredFile, shownFile, toggleFileMode } from '../views/file'
 import { refreshGit, shownGit } from '../views/git'
@@ -123,7 +124,9 @@ export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<R
 
   const openOffered = async () => {
     if (!offered) return
-    const opened = await navigate($, say, { view: 'file', path: offered.path }, 'anew', 'markdown')
+    // A file cited at its lines opens there; a .md opens rendered.
+    const { path, lines } = offered
+    const opened = await navigate($, say, { view: 'file', path, ...(lines ? { lines } : {}) }, 'anew', lines ? 'place' : 'markdown')
     if ('error' in opened) $.ui.toast(opened.error)
   }
 
@@ -144,7 +147,7 @@ export async function drawBand($: Api, e: RenderInput<'AbovePrompt'>): Promise<R
       {isOpen && buttons}
       {isOpen && !isBehind && state.back.length > 0 && <Button key="back" label={say.back} hotkey="b" onPress={() => goBack($, say)} />}
       {isOpen && <Button key="close" label={say.close} dimColor onPress={() => closePane($)} />}
-      {offered && <Button key="offer" label={say.open(offered.label)} hotkey="o" onPress={openOffered} />}
+      {offered && <Button key="offer" label={say.open(cite(offered.label, offered.lines))} hotkey="o" onPress={openOffered} />}
       {offered && <Button key="dismiss" label={say.dismiss} dimColor onPress={() => dismissOffer($)} />}
     </Box>
   )

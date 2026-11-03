@@ -1,10 +1,10 @@
-// The file view: the file shown and the .md offered in the band, their state, and every step
+// The file view: the file shown and the file offered in the band, their state, and every step
 // that changes them.
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { FileDoc, FileMode, Location, MdFile } from '../../types'
+import type { FileDoc, FileMode, Location, Offer } from '../../types'
 import { existing, load, mtime, recentMessages, sinceLastPrompt, where } from '../find'
 import type { Kind } from '../find'
 import type { Messages } from '../messages'
@@ -31,7 +31,7 @@ export async function shownFile($: Api): Promise<FileDoc | null> {
 }
 
 // The offered file, for a drawing, which a change to it then redraws.
-export async function offeredFile($: Api): Promise<MdFile | null> {
+export async function offeredFile($: Api): Promise<Offer | null> {
   return read($, offer)
 }
 
@@ -82,7 +82,8 @@ export async function loadFile($: Api, say: Messages, path: string, at: [number,
       ...(at ? { lines: at } : {}),
     }
   })
-  await update($, offer, offered => (offered?.path === path ? null : offered))
+  // Opening the file offered takes the offer, at its lines when it has some.
+  await update($, offer, offered => (offered?.path === path && (!offered.lines || sameLines(offered.lines, at)) ? null : offered))
   return {
     title: basename(path),
     label: described.label,
@@ -167,13 +168,22 @@ export async function fileMention($: Api): Promise<string | undefined> {
   return (await read($, file))?.label
 }
 
-// Offers the .md the replies since the last prompt named last, unless it is the one shown.
+const sameLines = (a: [number, number] | undefined, b: [number, number] | undefined) => cite('', a) === cite('', b)
+const offerKey = (offered: Offer | null) => (offered ? cite(offered.path, offered.lines) : '')
+
+// Offers what the replies since the last prompt pointed at last: a .md they named (to read
+// rendered, so without lines), or a file at the lines they cited. A file named bare is not
+// offered, as a reply names many in passing. Not offered when the pane shows it so already.
 export async function offerNamed($: Api): Promise<void> {
   const at = await where($)
-  const path = (await existing($, at, sinceLastPrompt(await recentMessages($)), 'markdown'))[0]?.path
+  const cited = (await existing($, at, sinceLastPrompt(await recentMessages($)), 'place')).find(
+    named => MARKDOWN.test(named.path) || named.lines,
+  )
+  const lines = cited && !MARKDOWN.test(cited.path) ? cited.lines : undefined
   const shown = await read($, file)
-  const offered = path && path !== shown?.path ? describe(at, path) : null
-  if (offered?.path !== (await read($, offer))?.path) await update($, offer, () => offered)
+  const isShown = cited !== undefined && shown?.path === cited.path && (!lines || sameLines(shown.lines, lines))
+  const offered = cited && !isShown ? { ...describe(at, cited.path), ...(lines ? { lines } : {}) } : null
+  if (offerKey(offered) !== offerKey(await read($, offer))) await update($, offer, () => offered)
 }
 
 export async function dismissOffer($: Api): Promise<void> {
