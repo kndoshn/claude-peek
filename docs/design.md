@@ -332,7 +332,13 @@ Instead of the commands left over, those run in another tab that none of the vie
 - Standard input is `/dev/null`, as when nothing is typed in a terminal. Given an empty pipe, a
   tool that takes a pipe as its input in place of the folder (`rg`, say) searches the pipe and
   finds nothing. The engine writes only text to a pipe, so `/bin/sh` points standard input at
-  `/dev/null` and starts the shell (`exec "$0" -ic "$1" </dev/null`), for any shell
+  `/dev/null` and starts the shell, for any shell
+- The shell runs in a session of its own (`POSIX::setsid` through perl, as macOS has no `setsid`
+  command), without a controlling terminal. The engine's children share Claude Code's terminal, so
+  a program that opens `/dev/tty` (fzf, glow without a file, `sudo`'s password prompt) would draw
+  over Claude Code's screen and read its keys, and Esc in fzf can end the Claude Code session.
+  Without a terminal such a program fails and says why, or waits until the time limit. Without
+  perl the shell starts as it is
 - The time limit is 30 seconds (the setting `commandTimeoutSeconds`).
   When the run is refused, the view says the command was stopped if the limit had passed, else
   that it could not run and why (without relying on the engine's wording of the refusal)
@@ -534,6 +540,9 @@ With Claude Code 2.1.316 running in tmux, these have been checked:
   click. While `/diff`'s tab is shown, the band narrows within a second to the view switches,
   **Quote selection** and **Close**. From there `/peek` or a view switch in the band brings peek's
   tab to the front, scrolled to the lines if given, with the prompt keeping the keys
+- With Claude Code 2.1.317, a command run in the command view has no controlling terminal
+  (`/dev/tty` cannot be opened), so `fzf` neither draws over the screen nor reads its keys; it
+  waits until Esc or the time limit stops it
 
 Colours in themes other than dark are not checked yet: `/theme` rewrites the person's settings, and
 there is no way to check without changing the local settings.

@@ -191,6 +191,10 @@ quote is headed by the file alone. A passage from one file's diff in a commit is
 - A command is stopped after 30 seconds (see [Settings](#settings)); one that never ends, such as
   `tail -f`, is not for this view.
 - Like `!` mode, the command runs outside Claude's sandbox.
+- The command runs as if piped, without a terminal: standard input is empty, and output is as a
+  pipe gets it (`ls` lists one name per line, a pager prints the whole text). A program that needs
+  a terminal, such as fzf, an editor or `sudo`'s password prompt, fails or waits until the time
+  limit; it cannot draw over Claude Code's screen.
 - peek sets `PEEK=1` for the command. If your shell's startup file turns aliases off inside Claude
   Code by testing `CLAUDECODE`, test `PEEK` too to keep them here:
   `if [[ -z "${CLAUDECODE:-}" || -n "${PEEK:-}" ]]`.

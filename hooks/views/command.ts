@@ -62,6 +62,19 @@ export function resetCommand(): void {
   isBusy = false
 }
 
+// How sh starts the person's shell ($0) on the command ($1), for any shell.
+// - stdin is /dev/null, as with nothing typed in a terminal: a tool that takes a pipe as its input
+//   in place of the folder (rg, say) would search an empty pipe and find nothing, and the engine
+//   only writes text to a pipe.
+// - The shell runs in a session of its own (perl's setsid, as macOS has no setsid command), so it
+//   has no controlling terminal. The engine's children share Claude Code's, where a program that
+//   opens /dev/tty (fzf, glow, sudo's password prompt) would draw over Claude Code's screen and
+//   read its keys; Esc in fzf can end the session. Without one, such a program fails and says why.
+//   Without perl the shell starts as it is.
+const START =
+  'command -v perl >/dev/null 2>&1 && exec perl -MPOSIX -e \'POSIX::setsid(); exec @ARGV or die "$!\\n"\' -- "$0" -ic "$1" </dev/null; ' +
+  'exec "$0" -ic "$1" </dev/null'
+
 // What a run came to: what it printed and how it ended, or why it did not run.
 async function execute($: Api, text: string, dir: string): Promise<Omit<CommandRun, 'command' | 'cwd'>> {
   const shell = (await $.env.get('SHELL').catch(() => undefined)) || '/bin/sh'
@@ -71,10 +84,7 @@ async function execute($: Api, text: string, dir: string): Promise<Omit<CommandR
     return started !== undefined && ended !== undefined ? ended - started : undefined
   }
   try {
-    // stdin is /dev/null, as with nothing typed in a terminal: a tool that takes a pipe as its
-    // input in place of the folder (rg, say) would search an empty pipe and find nothing. sh sets
-    // it up, for any shell, as the engine only writes text to a pipe.
-    const result = await $.process.run(['/bin/sh', '-c', 'exec "$0" -ic "$1" </dev/null', shell, text], {
+    const result = await $.process.run(['/bin/sh', '-c', START, shell, text], {
       cwd: dir,
       env: { PEEK: '1' },
       stdin: '',

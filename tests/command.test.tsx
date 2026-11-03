@@ -9,10 +9,17 @@ test('/peek !command runs it in the person\'s interactive shell and shows its ou
   r.commands['/bin/zsh'] = { exitCode: 0, stdout: 'a.md\nb.md\n' }
 
   expect((await peek($, '!ls -la')).text).toBe('Opened $ ls -la')
-  // Its stdin is /dev/null, as with no input in a terminal: rg searches the folder, not stdin.
   expect(r.ran).toEqual([
-    { argv: ['/bin/sh', '-c', 'exec "$0" -ic "$1" </dev/null', '/bin/zsh', 'ls -la'], cwd: CWD, env: { PEEK: '1' }, stdin: '', timeoutMs: 30000 },
+    { argv: ['/bin/sh', '-c', expect.any(String), '/bin/zsh', 'ls -la'], cwd: CWD, env: { PEEK: '1' }, stdin: '', timeoutMs: 30000 },
   ])
+  // sh starts the shell with stdin from /dev/null, as with nothing typed in a terminal (rg then
+  // searches the folder, not stdin), and in a session of its own through perl, so that nothing
+  // it runs reaches the terminal Claude Code draws on through /dev/tty; without perl, as it is.
+  const start = r.ran[0]?.argv[2] ?? ''
+  expect(start).toContain('exec perl -MPOSIX -e')
+  expect(start).toContain('POSIX::setsid()')
+  expect(start).toContain('-- "$0" -ic "$1" </dev/null')
+  expect(start).toMatch(/; exec "\$0" -ic "\$1" <\/dev\/null$/)
   // Opened while it ran, then fitted to its output.
   expect(r.opened).toEqual(['$ ls -la', '$ ls -la'])
   const { header, headingWrap, codes } = await pane($)
@@ -27,7 +34,7 @@ test('without a SHELL the command runs in /bin/sh', async ($, on) => {
   r.commands['/bin/sh'] = { exitCode: 0, stdout: 'ok' }
 
   await peek($, '!echo ok')
-  expect(r.ran[0]?.argv).toEqual(['/bin/sh', '-c', 'exec "$0" -ic "$1" </dev/null', '/bin/sh', 'echo ok'])
+  expect(r.ran[0]?.argv.slice(3)).toEqual(['/bin/sh', 'echo ok'])
 })
 
 test('the output loses its colours, carriage returns and the shell\'s warnings; errors show apart', async ($, on) => {
