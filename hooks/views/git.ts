@@ -10,7 +10,7 @@ import type { Messages } from '../messages'
 import type { Opened } from '../nav'
 import { logLineText, parseLog, parseStatus, splitPatch } from '../pure/git'
 import { fromHome } from '../pure/paths'
-import { locate } from '../pure/quote'
+import { locate, shellWord } from '../pure/quote'
 import type { Quoted } from '../pure/quote'
 import { now, rereads, runGit } from '../run'
 
@@ -126,15 +126,24 @@ function statusText(shown: GitState): string {
   return [...s.staged.map(f => `${f.mark} ${f.path}`), ...s.unstaged.map(f => `${f.mark} ${f.path}`), ...s.untracked.map(path => `? ${path}`)].join('\n')
 }
 
-// The commit opened as text: its subject, details, numbers and diff.
-function commitText(commit: CommitDetails): string {
-  return [
-    `${commit.hash} ${commit.subject}`,
-    `${commit.author} · ${commit.date}`,
-    commit.body,
-    commit.stat,
-    ...commit.files.flatMap(file => [file.path, file.hunks || file.note]),
-  ].join('\n')
+// The commit opened as text, as the view draws it: its subject, details and numbers, then each
+// file's name and diff.
+function commitParts(commit: CommitDetails): { preamble: string; files: { path: string; text: string }[] } {
+  return {
+    preamble: [`${commit.hash} ${commit.subject}`, `${commit.author} · ${commit.date}`, commit.body, commit.stat].join('\n'),
+    files: commit.files.map(file => ({ path: file.path, text: `${file.path}\n${file.hunks || file.note}` })),
+  }
+}
+
+// A selection from the commit opened, headed by the commit, and by the file too when the
+// selection is in that file's diff alone; undefined when it is not in the commit.
+function commitQuote(commit: CommitDetails, selected: string): Quoted | undefined {
+  const { preamble, files } = commitParts(commit)
+  if (!locate([preamble, ...files.map(file => file.text)].join('\n'), selected)) return undefined
+  const head = `git show ${commit.hash}`
+  const holding = files.filter(file => locate(file.text, selected))
+  const only = holding.length === 1 && !locate(preamble, selected) ? holding[0] : undefined
+  return { head: only ? `${head} -- ${shellWord(only.path)}` : head, text: selected }
 }
 
 // A selection from the Git view, headed by what it came from: the commit opened, the status or the
@@ -142,7 +151,7 @@ function commitText(commit: CommitDetails): string {
 export async function gitQuote($: Api, selected: string): Promise<Quoted | undefined> {
   const shown = await read($, git)
   if (!shown) return undefined
-  if (shown.commit) return locate(commitText(shown.commit), selected) ? { head: `git show ${shown.commit.hash}`, text: selected } : undefined
+  if (shown.commit) return commitQuote(shown.commit, selected)
   if (locate(statusText(shown), selected)) return { head: 'git status', text: selected }
   if (locate(shown.log.map(logLineText).join('\n'), selected)) return { head: 'git log', text: selected }
   return undefined

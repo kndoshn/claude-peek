@@ -4,6 +4,12 @@
 // A selection to quote, and the heading that says where it came from.
 export type Quoted = { head: string; text: string }
 
+// A word as a POSIX shell reads it back: left as it is when it holds only characters the shell
+// takes literally, else in single quotes.
+export function shellWord(word: string): string {
+  return /^[\w./@%+=:,-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`
+}
+
 // The selected text as Markdown quote lines.
 export function quote(text: string): string {
   return text

@@ -193,7 +193,48 @@ test('a selection is quoted under what it came from: the status, the history or 
   await pressPane($, 'commit:abc1234')
   r.selection = { text: '+three' }
   await press($, 'quote')
-  expect(r.filled.map(fill => fill.text.split('\n')[0])).toEqual(['git status', 'git log', 'git show abc1234'])
+  expect(r.filled.map(fill => fill.text.split('\n')[0])).toEqual(['git status', 'git log', 'git show abc1234 -- src/a.ts'])
+})
+
+test('a selection from one file of a commit is headed by that file too, and one from the message or across files by the commit alone', async ($, on) => {
+  const r = engine(on, {})
+  repository(r)
+  r.commands['git show --format= --patch --no-color --no-ext-diff --diff-merges=first-parent abc1234'] = {
+    exitCode: 0,
+    stdout: [
+      'diff --git a/src/a.ts b/src/a.ts',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1 +1 @@',
+      '-two',
+      '+three',
+      'diff --git a/my notes.md b/my notes.md',
+      '--- a/my notes.md',
+      '+++ b/my notes.md',
+      '@@ -1 +1 @@',
+      '-two',
+      '+four',
+      '',
+    ].join('\n'),
+  }
+  await peek($, 'git')
+  await pressPane($, 'commit:abc1234')
+
+  const heads: string[] = []
+  for (const text of ['+three', 'src/a.ts\n@@ -1 +1 @@\n-two', '+four', '-two', 'It dropped the last line.', '+three\nmy notes.md']) {
+    r.selection = { text }
+    await press($, 'quote')
+    heads.push(r.filled.at(-1)?.text.split('\n')[0] ?? '')
+  }
+  expect(heads).toEqual([
+    'git show abc1234 -- src/a.ts',
+    'git show abc1234 -- src/a.ts',
+    "git show abc1234 -- 'my notes.md'",
+    // In both files.
+    'git show abc1234',
+    'git show abc1234',
+    'git show abc1234',
+  ])
 })
 
 test('outside a repository /peek git says so', async ($, on) => {

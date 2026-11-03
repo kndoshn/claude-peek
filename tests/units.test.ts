@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { diff, hunks } from '../hooks/pure/diff'
 import { clip, fenced, frontMatter, linkify } from '../hooks/pure/markdown'
 import { absolute, closest, describe, dirname, join, named, normalize, rank } from '../hooks/pure/paths'
-import { cite, locate, quote, ungutter } from '../hooks/pure/quote'
+import { cite, locate, quote, shellWord, ungutter } from '../hooks/pure/quote'
 import { parseTarget } from '../hooks/pure/target'
 import { clean, dropShellNoise, visible } from '../hooks/pure/terminal'
 import { logLineText, parseLog, parseStatus, splitPatch, statusBadges } from '../hooks/pure/git'
@@ -371,4 +371,12 @@ test('a path git quotes (a quote, a backslash or a control character in it) read
     '',
   ].join('\n')
   expect(splitPatch(patch).map(file => file.path)).toEqual(['say "hi".md', 'back\\slash\ttab.md', 'bell\u0007.bin', 'my img.png'])
+})
+
+test('shellWord leaves a plain path as it is and quotes one the shell would split or expand', () => {
+  expect(shellWord('src/a-b_c.ts')).toBe('src/a-b_c.ts')
+  expect(shellWord('my notes.md')).toBe("'my notes.md'")
+  expect(shellWord('$HOME*.md')).toBe("'$HOME*.md'")
+  expect(shellWord("it's.md")).toBe("'it'\\''s.md'")
+  expect(shellWord('')).toBe("''")
 })

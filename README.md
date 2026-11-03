@@ -166,8 +166,9 @@ focus the row (ctrl+x tab, or a click) and press its key.
 
 A quote's line numbers come from finding the selected text in the file, or from the numbers the
 source view put into the selection. When the text cannot be found (an image's alt text, say), the
-quote is headed by the file alone. A passage selected in the conversation is quoted without a
-heading.
+quote is headed by the file alone. A passage from one file's diff in a commit is headed
+`git show abc1234 -- src/a.ts`; one from the message or across files, by the commit alone. A
+passage selected in the conversation is quoted without a heading.
 
 ### The pane
 
