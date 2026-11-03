@@ -6,11 +6,10 @@ import type { EngineInterface, RenderElement, RenderInput, UiPressArgument } fro
 import type { ViewName } from '../../types'
 import type { Messages } from '../messages'
 import { messages } from '../messages'
-import { closePane, goBack, navigate, navState, refit, switchView } from '../nav'
-import { mention, quoteAll, quoteSelection } from '../prompt'
+import { closePane, goBack, navigate, navState, switchView } from '../nav'
+import { mention, quoteSelection, quoteTree } from '../prompt'
 import { count } from '../pure/diff'
 import { cite } from '../pure/quote'
-import { commandOutput, rerunCommand } from '../views/command'
 import { changesOf, dismissOffer, offeredFile, shownFile, toggleFileMode } from '../views/file'
 import { refreshGit, shownGit } from '../views/git'
 import { shownTreeText } from '../views/tree'
@@ -18,7 +17,7 @@ import { shownTreeText } from '../views/tree'
 type Api = EngineInterface
 
 // The views the band switches between, in its order.
-const VIEWS: readonly ViewName[] = ['file', 'tree', 'git', 'command']
+const VIEWS: readonly ViewName[] = ['file', 'tree', 'git']
 
 // Puts `text` on the clipboard of the surface pressed on, and says so.
 async function copy($: Api, say: Messages, text: string | undefined, press: UiPressArgument): Promise<void> {
@@ -62,7 +61,7 @@ async function fileButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages)
 function treeButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
   const { Button } = $.ui.resolve(e)
   return [
-    <Button key="quote-tree" label={say.quoteTree} hotkey="t" onPress={() => quoteAll($, say)} />,
+    <Button key="quote-tree" label={say.quoteTree} hotkey="t" onPress={() => quoteTree($, say)} />,
     <Button key="mention" label={say.mention} hotkey="a" onPress={() => mention($)} />,
     <Button key="copy" label={say.copy} hotkey="c" onPress={async press => copy($, say, await shownTreeText($, say), press)} />,
   ]
@@ -78,22 +77,6 @@ async function gitButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages):
   return buttons
 }
 
-// Runs the command again, and fits the pane to its output once it ended.
-async function rerun($: Api, say: Messages): Promise<void> {
-  const run = await rerunCommand($)
-  if (run && (await run.ended)) await refit($, say, 'command')
-}
-
-// The buttons of the command view.
-function commandButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages): RenderElement[] {
-  const { Button } = $.ui.resolve(e)
-  return [
-    <Button key="quote-all" label={say.quoteAll} hotkey="t" onPress={() => quoteAll($, say)} />,
-    <Button key="rerun" label={say.rerun} hotkey="r" onPress={() => rerun($, say)} />,
-    <Button key="copy" label={say.copy} hotkey="c" onPress={async press => copy($, say, await commandOutput($), press)} />,
-  ]
-}
-
 // The buttons of the view shown.
 async function viewButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages, view: ViewName): Promise<RenderElement[]> {
   switch (view) {
@@ -103,8 +86,6 @@ async function viewButtons($: Api, e: RenderInput<'AbovePrompt'>, say: Messages,
       return treeButtons($, e, say)
     case 'git':
       return gitButtons($, e, say)
-    case 'command':
-      return commandButtons($, e, say)
   }
 }
 

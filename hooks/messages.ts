@@ -38,18 +38,8 @@ export type Messages = {
   noChanges: string
   deleted: string
   cut: string
-  commandHint: string
-  exit: (code: number) => string
-  stoppedAfter: (seconds: number) => string
-  running: string
-  took: (seconds: number) => string
-  noOutput: string
-  stderr: string
-  quoteAll: string
-  rerun: string
   copy: string
   copied: string
-  failed: string
   notFolder: (path: string) => string
   more: (hidden: number) => string
   quoteTree: string
@@ -73,8 +63,8 @@ export type Messages = {
 
 const MESSAGES: Record<Lang, Messages> = {
   en: {
-    peekCommand: 'Peek at a file, a folder, Git or a command in a pane, and quote what you need',
-    peekArgument: '[path[:line] | name | git | !command]',
+    peekCommand: 'Peek at a file, a folder or Git in a pane, and quote what you need',
+    peekArgument: '[path[:line] | name | git]',
     mdCommand: 'Read a Markdown file in the pane (no path: the latest .md Claude named)',
     mdArgument: '[path or part of a name]',
     opened: label => `Opened ${label}`,
@@ -86,7 +76,7 @@ const MESSAGES: Record<Lang, Messages> = {
     notFound: query => `Nothing matches "${query}". Give a path or part of a name.`,
     emptyPane: '/peek [path] shows a file here',
     selectFirst: 'Select a passage in the pane with the mouse first',
-    views: { file: 'File', tree: 'Tree', git: 'Git', command: 'Command' },
+    views: { file: 'File', tree: 'Tree', git: 'Git' },
     quote: 'Quote selection',
     close: 'Close',
     open: label => `Open ${label}`,
@@ -104,18 +94,8 @@ const MESSAGES: Record<Lang, Messages> = {
     noChanges: 'No changes since your last message',
     deleted: 'deleted on disk',
     cut: 'too long: cut to fit',
-    commandHint: '/peek !ls -la runs a command and shows its output here',
-    exit: code => `exit ${code}`,
-    stoppedAfter: seconds => `stopped after ${seconds} s`,
-    running: 'running…',
-    took: seconds => `${seconds} s`,
-    noOutput: 'no output',
-    stderr: 'stderr',
-    quoteAll: 'Quote output',
-    rerun: 'Run again',
     copy: 'Copy',
     copied: 'Copied',
-    failed: 'could not run',
     notFolder: path => `Not a folder: ${path}`,
     more: hidden => `… ${hidden} more`,
     quoteTree: 'Quote tree',
@@ -137,8 +117,8 @@ const MESSAGES: Record<Lang, Messages> = {
     gitCommand: "Show the repository's status and history in the pane",
   },
   ja: {
-    peekCommand: 'ファイル・フォルダー・Git・コマンドの出力をパネルで覗き、必要な箇所を引用する',
-    peekArgument: '[パス[:行] | 名前の一部 | git | !コマンド]',
+    peekCommand: 'ファイル・フォルダー・Git をパネルで覗き、必要な箇所を引用する',
+    peekArgument: '[パス[:行] | 名前の一部 | git]',
     mdCommand: 'Markdown をパネルで読む（パスなしで直近の .md）',
     mdArgument: '[パスか名前の一部]',
     opened: label => `${label} をパネルで開きました`,
@@ -150,7 +130,7 @@ const MESSAGES: Record<Lang, Messages> = {
     notFound: query => `見つかりません: ${query}（パスか、名前の一部を指定してください）`,
     emptyPane: '/peek [path] でファイルを表示します',
     selectFirst: '引用する箇所を先にマウスで選択してください',
-    views: { file: 'ファイル', tree: 'ツリー', git: 'Git', command: 'コマンド' },
+    views: { file: 'ファイル', tree: 'ツリー', git: 'Git' },
     quote: '選択を引用',
     close: '閉じる',
     open: label => `開く: ${label}`,
@@ -168,18 +148,8 @@ const MESSAGES: Record<Lang, Messages> = {
     noChanges: '前回の送信からの変更はありません',
     deleted: 'ディスクから削除されました',
     cut: '長いので途中まで表示',
-    commandHint: '/peek !ls -la でコマンドを実行し、出力をここに表示します',
-    exit: code => `終了コード ${code}`,
-    stoppedAfter: seconds => `${seconds} 秒で止めました`,
-    running: '実行中…',
-    took: seconds => `${seconds} 秒`,
-    noOutput: '出力なし',
-    stderr: '標準エラー出力',
-    quoteAll: '出力を引用',
-    rerun: '再実行',
     copy: 'コピー',
     copied: 'コピーしました',
-    failed: '実行できませんでした',
     notFolder: path => `フォルダーではありません: ${path}`,
     more: hidden => `…ほか ${hidden} 件`,
     quoteTree: 'ツリーを引用',

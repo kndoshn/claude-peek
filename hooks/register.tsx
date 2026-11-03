@@ -4,19 +4,18 @@ import { candidates, recentMessages, existing, resetFind, resolvePlace, where } 
 import type { Kind } from './find'
 import { configureLanguage, messages } from './messages'
 import type { Messages } from './messages'
-import { closePane, forgetPane, isPaneShown, navigate, navState, noteBehind, openView, PANE, refit, reopen } from './nav'
+import { closePane, forgetPane, isPaneShown, navigate, navState, noteBehind, openView, PANE, reopen } from './nav'
 import { rank, suggestion } from './pure/paths'
 import { parseTarget, unmention } from './pure/target'
 import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
-import { configureCommand, recentCommands, resetCommand, startCommand } from './views/command'
 import type { Opened } from './nav'
 import { offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
 import { markGitStale, resetGit, tickGit } from './views/git'
 import { markTreeStale, resetTree, tickTree } from './views/tree'
 
-// peek: look at a file, a folder, Git or a command's output in a pane beside the chat, and quote
-// what is needed into the prompt with where it came from, so nothing is copied from another tab.
+// peek: look at a file, a folder or Git in a pane beside the chat, and quote what is needed into
+// the prompt with where it came from, so nothing is copied from another tab.
 // See docs/design.md.
 //
 // This file wires the events: nav.ts keeps the pane and Back, views/ each view's state and
@@ -51,7 +50,7 @@ function report(say: Messages, opened: Opened): { text: string } {
 }
 
 // /peek: reopens the last place without a target (the working directory the first time), else
-// opens what the target names: a command's output, Git, a file at its lines, or a folder.
+// opens what the target names: Git, a file at its lines, or a folder.
 async function peekCommand($: Api, args: string): Promise<{ text: string }> {
   const say = await messages($)
   const at = await where($)
@@ -59,13 +58,6 @@ async function peekCommand($: Api, args: string): Promise<{ text: string }> {
   if (target.kind === 'empty') {
     const reopened = await reopen($, say)
     return report(say, reopened ?? (await navigate($, say, { view: 'tree', root: at.cwd }, 'anew')))
-  }
-  if (target.kind === 'command') {
-    // The pane opens while the command runs, and fits its output once it ended.
-    const { ended } = await startCommand($, target.command)
-    const opened = await navigate($, say, { view: 'command' }, 'anew')
-    if (await ended) await refit($, say, 'command')
-    return report(say, opened)
   }
   if (target.kind === 'git') return report(say, await navigate($, say, { view: 'git' }, 'anew'))
   const place = await resolvePlace($, at, target.path, 'place')
@@ -106,8 +98,6 @@ export const register: Register = (on, options: PluginOptions) => {
   const hasShortCommands = options.shortCommands === true
   // A load starts over: what an earlier load worked out may not hold for this one.
   configureLanguage(options.language)
-  configureCommand(options.commandTimeoutSeconds)
-  resetCommand()
   resetFind()
   resetFile()
   resetTree()
@@ -145,15 +135,6 @@ export const register: Register = (on, options: PluginOptions) => {
     const command = /^\/(peek|md)\s/.exec(e.text)?.[1]
     if (!command || e.start <= command.length + 1) return base
     try {
-      // The commands run before, while `!` and the command's first word are being typed.
-      if (command === 'peek' && e.token.startsWith('!') && e.text.slice(0, e.start).trim() === '/peek') {
-        const typed = e.token.slice(1)
-        const mine = (await recentCommands($))
-          .filter(run => run.startsWith(typed))
-          .slice(0, MAX_SUGGESTIONS)
-          .map(run => ({ text: `!${run}` }))
-        return { suggestions: [...base.suggestions, ...mine] }
-      }
       const kind: Kind = command === 'md' ? 'markdown' : 'place'
       const say = await messages($)
       const keyword = command === 'peek' && e.token !== '' && 'git'.startsWith(e.token) ? [{ text: 'git', label: 'git', description: say.views.git }] : []

@@ -8,7 +8,7 @@ import { follow } from '../nav'
 import { hunks, lines } from '../pure/diff'
 import { clip, DRAW_LIMIT, frontMatter, linkify } from '../pure/markdown'
 import { dirname } from '../pure/paths'
-import { visible } from '../pure/terminal'
+import { visible } from '../pure/visible'
 import { changesOf, LINE_KEY } from '../views/file'
 
 type Api = EngineInterface

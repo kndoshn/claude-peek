@@ -9,6 +9,7 @@ import {
   engine,
   md,
   pane,
+  PANE,
   peek,
   press,
   pressPane,
@@ -750,4 +751,18 @@ test('a file outside the working directory stays labelled from the home', async 
   engine(on, { [`${CWD}/../elsewhere/z.md`]: 'z', '/elsewhere/z.md': 'z' })
   await md($, '/elsewhere/z.md')
   expect((await pane($)).header).toBe('/elsewhere/z.md · 1 line')
+})
+
+test('a pane state an earlier version kept, on a view this one has not, reads as a closed pane', async ($, on) => {
+  engine(on, {})
+  // nav-1 could hold the command view, in the pane and in Back.
+  on('state.get', (_, e, next) =>
+    e.plugin === 'peek' && e.key === 'nav'
+      ? { value: { value: { shape: 'nav-1', value: { isOpen: true, view: 'command', back: [{ view: 'command' }] } }, version: 1 } }
+      : next(e),
+  )
+
+  const ui = await $.ui.mount(PANE)
+  expect((await ui.find({ type: 'Text', text: /\/peek \[path\]/ }))?.text).toBe('/peek [path] shows a file here')
+  await ui.unmount()
 })

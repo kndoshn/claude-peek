@@ -8,7 +8,7 @@ import type { Messages } from '../messages'
 import { follow } from '../nav'
 import { clip, DRAW_LIMIT } from '../pure/markdown'
 import { join } from '../pure/paths'
-import { visible } from '../pure/terminal'
+import { visible } from '../pure/visible'
 
 type Api = EngineInterface
 

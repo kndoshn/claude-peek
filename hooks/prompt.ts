@@ -7,7 +7,6 @@ import type { Messages } from './messages'
 import { navState } from './nav'
 import { quote } from './pure/quote'
 import type { Quoted } from './pure/quote'
-import { commandBlock, commandQuote } from './views/command'
 import { fileMention, fileQuote } from './views/file'
 import { gitMention, gitQuote } from './views/git'
 import { treeBlock, treeMention, treeQuote } from './views/tree'
@@ -38,8 +37,6 @@ async function quoteFrom($: Api, say: Messages, view: ViewName, selected: string
       return treeQuote($, say, selected)
     case 'git':
       return gitQuote($, selected)
-    case 'command':
-      return commandQuote($, selected)
   }
 }
 
@@ -68,10 +65,9 @@ export async function mention($: Api): Promise<void> {
   if (commit) await appendWord($, commit)
 }
 
-// Quotes the whole of what the view shows: a command's output under the command, a tree under
-// its folder.
-export async function quoteAll($: Api, say: Messages): Promise<void> {
-  const state = await navState($)
-  const block = state.view === 'command' ? await commandBlock($) : state.view === 'tree' ? await treeBlock($, say) : undefined
+// Quotes the tree shown, under its folder.
+export async function quoteTree($: Api, say: Messages): Promise<void> {
+  if ((await navState($)).view !== 'tree') return
+  const block = await treeBlock($, say)
   if (block) await appendBlock($, block)
 }

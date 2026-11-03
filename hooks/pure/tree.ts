@@ -1,7 +1,7 @@
 // A folder's tree as rows and as text, from the listings of the folders opened. Pure.
 
 import type { TreeEntry } from '../../types'
-import { visible } from './terminal'
+import { visible } from './visible'
 
 // One row: an entry with the lines that lead to it, its Git mark and whether git ignores it; or
 // the row standing for the entries a long folder holds back.

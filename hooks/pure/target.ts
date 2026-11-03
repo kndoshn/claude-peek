@@ -2,18 +2,13 @@
 
 export type Target =
   | { kind: 'empty' }
-  | { kind: 'command'; command: string }
   | { kind: 'git' }
   | { kind: 'path'; path: string; lines?: [number, number] }
 
-// `!command` runs a command, `git` shows Git, anything else is a path or part of a name, which
-// may start with @ and end in `:12` or `:12-14` for the lines to open at.
+// `git` shows Git, anything else is a path or part of a name, which may start with @ and end in
+// `:12` or `:12-14` for the lines to open at.
 export function parseTarget(arg: string): Target {
   const text = arg.trim()
-  if (text.startsWith('!')) {
-    const command = text.slice(1).trim()
-    return command ? { kind: 'command', command } : { kind: 'empty' }
-  }
   if (text === '') return { kind: 'empty' }
   if (text === 'git') return { kind: 'git' }
   return { kind: 'path', ...splitLines(unmention(text)) }

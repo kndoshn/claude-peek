@@ -6,14 +6,13 @@ export type MdFile = { path: string; label: string }
 export type Offer = MdFile & { lines?: [number, number] }
 
 // What the pane can show, one view at a time.
-export type ViewName = 'file' | 'tree' | 'git' | 'command'
+export type ViewName = 'file' | 'tree' | 'git'
 
 // A place in a view, which Back returns to.
 export type Location =
   | { view: 'file'; path: string; lines?: [number, number] }
   | { view: 'tree'; root: string }
   | { view: 'git'; commit?: string }
-  | { view: 'command' }
 
 // The pane: whether it is open, the view it shows, and the places a link or a click was
 // followed from, the last one last.
@@ -36,20 +35,6 @@ export type FileDoc = MdFile & {
   isMarkdown: boolean
   mode: FileMode
   lines?: [number, number]
-}
-
-// The last command the command view ran: where, what it printed, and how it ended (its exit
-// code, or the seconds after which it was stopped), with the whole seconds it took from one up;
-// while it runs again, what it printed the time before.
-export type CommandRun = {
-  command: string
-  cwd: string
-  stdout: string
-  stderr: string
-  exitCode: number | null
-  stoppedAfter?: number
-  seconds?: number
-  isRunning?: boolean
 }
 
 // An entry of a folder as the tree lists it: a symbolic link as what it leads to (other when it
@@ -127,7 +112,6 @@ declare module 'claude-code' {
     peek: {
       nav: Shaped<Nav>
       file: Shaped<FileDoc | null>
-      command: Shaped<CommandRun | null>
       tree: Shaped<TreeState | null>
       git: Shaped<GitState | null>
       // What the last reply pointed at, offered in the band until opened or dismissed.

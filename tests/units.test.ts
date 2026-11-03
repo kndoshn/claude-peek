@@ -5,7 +5,7 @@ import { clip, fenced, frontMatter, linkify } from '../hooks/pure/markdown'
 import { absolute, closest, describe, dirname, join, named, normalize, rank } from '../hooks/pure/paths'
 import { cite, locate, quote, shellWord, ungutter } from '../hooks/pure/quote'
 import { parseTarget, unmention } from '../hooks/pure/target'
-import { clean, dropShellNoise, visible } from '../hooks/pure/terminal'
+import { visible } from '../hooks/pure/visible'
 import { logLineText, parseLog, parseStatus, splitPatch, statusBadges } from '../hooks/pure/git'
 import { sortEntries, treeRows, treeText } from '../hooks/pure/tree'
 import type { Change } from '../hooks/pure/diff'
@@ -190,10 +190,10 @@ test('links inside code, images, anchors, URLs and root paths stay as written', 
   expect([...links.keys()]).toEqual(['file:///r/g.md'])
 })
 
-test('a /peek argument is a command, git, or a path with an optional line or range', () => {
+test('a /peek argument is git, or a path with an optional line or range', () => {
   expect(parseTarget('')).toEqual({ kind: 'empty' })
-  expect(parseTarget('  !ls -la ')).toEqual({ kind: 'command', command: 'ls -la' })
-  expect(parseTarget('!')).toEqual({ kind: 'empty' })
+  // A ! is part of a name like any other character: peek runs no commands.
+  expect(parseTarget('  !ls -la ')).toEqual({ kind: 'path', path: '!ls -la' })
   expect(parseTarget('git')).toEqual({ kind: 'git' })
   expect(parseTarget('gitignore')).toEqual({ kind: 'path', path: 'gitignore' })
   expect(parseTarget('src/a.ts')).toEqual({ kind: 'path', path: 'src/a.ts' })
@@ -208,16 +208,6 @@ test('a /peek argument is a command, git, or a path with an optional line or ran
   expect(parseTarget('@')).toEqual({ kind: 'path', path: '@' })
   expect(unmention(' @docs ')).toBe('docs')
   expect(unmention('docs')).toBe('docs')
-})
-
-test('terminal output loses escape sequences and control characters, and keeps what \r left last', () => {
-  expect(clean('\u001b[1;31mred\u001b[0m bold\u001b[K')).toBe('red bold')
-  expect(clean('\u001b]0;title\u0007after')).toBe('after')
-  expect(clean('a\r\nb\r\n')).toBe('a\nb\n')
-  expect(clean('1/3\r2/3\r3/3 done')).toBe('3/3 done')
-  expect(clean('tab\there\u0008\u0000')).toBe('tab\there')
-  expect(clean('next\u0085line')).toBe('nextline')
-  expect(dropShellNoise("(eval):1: can't change option: zle\nreal error")).toBe('real error')
 })
 
 test('a control character shows as its picture, so a drawing takes any text', () => {

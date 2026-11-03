@@ -8,8 +8,7 @@ import type { Location, Nav, ViewName } from '../types'
 import { where } from './find'
 import type { Kind } from './find'
 import type { Messages } from './messages'
-import { visible } from './pure/terminal'
-import { commandLocation, loadCommand } from './views/command'
+import { visible } from './pure/visible'
 import { fileLocation, loadFile } from './views/file'
 import { gitLocation, loadGit } from './views/git'
 import { loadTree, treeLocation } from './views/tree'
@@ -28,8 +27,9 @@ const DARK_BACKGROUND = 'transparent'
 // draws under its header, and the element to scroll to; or what to say about why not.
 export type Opened = { title: string; label: string; lines: number; scrollKey?: string } | { error: string }
 
-// Read and written only in this file (see views/file.ts).
-const nav = atom({ plugin: 'peek', key: 'nav' } as const, { isOpen: false, view: null, back: [] }, { shape: 'nav-1' })
+// Read and written only in this file (see views/file.ts). nav-1 could hold a view this version
+// does not have, so a value kept under it reads as a closed pane.
+const nav = atom({ plugin: 'peek', key: 'nav' } as const, { isOpen: false, view: null, back: [] }, { shape: 'nav-2' })
 
 // The pane's state, for a drawing, which a change to it then redraws.
 export async function navState($: Api): Promise<Nav> {
@@ -41,8 +41,6 @@ async function load($: Api, say: Messages, to: Location, kind: Kind): Promise<Op
   switch (to.view) {
     case 'file':
       return loadFile($, say, to.path, to.lines, kind)
-    case 'command':
-      return loadCommand($, say)
     case 'tree':
       return loadTree($, say, to.root)
     case 'git':
@@ -55,8 +53,6 @@ async function here($: Api, view: ViewName): Promise<Location | undefined> {
   switch (view) {
     case 'file':
       return fileLocation($)
-    case 'command':
-      return commandLocation($)
     case 'tree':
       return treeLocation($)
     case 'git':
@@ -77,17 +73,13 @@ async function background($: Api): Promise<string | undefined> {
 // 2.1.316.
 const LAYOUT_MS = 100
 
-// The rows the pane was last opened with, so fitting it again asks only for a change.
-let openedRows: number | undefined
-
-// Opens the pane, or redraws it open. Unless `toFront` is false, a pane behind another tab is
-// brought in front: an open alone only retitles it there, so a command or a press would seem to
-// do nothing, and an open that takes the focus is what shows it. That open resolves before the
+// Opens the pane, or redraws it open. A pane behind another tab is brought in front: an open
+// alone only retitles it there, so a command or a press would seem to do nothing, and an open
+// that takes the focus is what shows it. That open resolves before the
 // pane is laid out in front, where a scroll at once is lost, so the scroll waits a moment. A pane
 // in sight is left the focus it has, so the prompt keeps the keys.
-async function openPane($: Api, opened: Exclude<Opened, { error: string }>, toFront = true): Promise<void> {
+async function openPane($: Api, opened: Exclude<Opened, { error: string }>): Promise<void> {
   const backgroundColor = await background($)
-  openedRows = opened.lines + HEADER_ROWS
   const pane: PaneOpenArgs = {
     id: PANE,
     // A file's or a folder's name may hold a control character, which a title refuses.
@@ -102,7 +94,7 @@ async function openPane($: Api, opened: Exclude<Opened, { error: string }>, toFr
     rows: opened.lines + HEADER_ROWS,
     ...(backgroundColor ? { backgroundColor } : {}),
   }
-  const isBehind = toFront && (await isPaneBehind($))
+  const isBehind = await isPaneBehind($)
   await $.ui.open(isBehind ? { ...pane, focus: true } : pane)
   if (isBehind && opened.scrollKey) await $.clock.sleep(LAYOUT_MS)
   // The open resolves once the pane is drawn, so the element is there to scroll to.
@@ -162,7 +154,7 @@ export async function reopen($: Api, say: Messages): Promise<Opened | undefined>
 }
 
 // Where a view that never showed anything opens: the tree and Git at the working directory. A
-// file or a command has none, and the pane says how to open one.
+// file has none, and the pane says how to open one.
 async function firstPlace($: Api, view: ViewName): Promise<Location | undefined> {
   if (view === 'tree') return { view: 'tree', root: (await where($)).cwd }
   if (view === 'git') return { view: 'git' }
@@ -180,15 +172,6 @@ export async function switchView($: Api, say: Messages, view: ViewName): Promise
   }
   await update($, nav, current => ({ ...current, isOpen: true, view, isBehind: false }))
   await openPane($, opened)
-}
-
-// Fits the pane to what `view` shows now (a command that ended), while the pane is open on it,
-// leaving it behind any tab the person brought in front meanwhile.
-export async function refit($: Api, say: Messages, view: ViewName): Promise<void> {
-  if ((await openView($)) !== view) return
-  const to = await here($, view)
-  const opened = to ? await load($, say, to, 'place') : undefined
-  if (opened && !('error' in opened) && opened.lines + HEADER_ROWS !== openedRows) await openPane($, opened, false)
 }
 
 // The view the pane is open on, or null while it is closed.
