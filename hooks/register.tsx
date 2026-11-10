@@ -10,7 +10,7 @@ import { parseTarget, unmention } from './pure/target'
 import { drawBand } from './ui/band'
 import { drawPane } from './ui/pane'
 import type { Opened } from './nav'
-import { offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
+import { dismissOffer, offerNamed, rebaseFile, refreshFile, resetFile } from './views/file'
 import { markGitStale, resetGit, tickGit } from './views/git'
 import { markTreeStale, resetTree, tickTree } from './views/tree'
 
@@ -96,6 +96,8 @@ async function mdCommand($: Api, args: string): Promise<{ text: string }> {
 export const register: Register = (on, options: PluginOptions) => {
   // /tree and /git take names other plugins and skills may want, so they come only when asked.
   const hasShortCommands = options.shortCommands === true
+  // What a reply pointed at is offered in the band only when asked, as the offer can get in the way.
+  const offersReplies = options.offerReplies === true
   // A load starts over: what an earlier load worked out may not hold for this one.
   configureLanguage(options.language)
   resetFind()
@@ -162,7 +164,8 @@ export const register: Register = (on, options: PluginOptions) => {
     const result = await next(e)
     markTreeStale()
     markGitStale()
-    await offerNamed($).catch(() => undefined)
+    // With the setting off, an offer kept from when it was on goes away.
+    await (offersReplies ? offerNamed($) : dismissOffer($)).catch(() => undefined)
 
     return result
   })

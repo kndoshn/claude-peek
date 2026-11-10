@@ -34,6 +34,12 @@
       "title": "Short commands /tree and /git",
       "description": "Also register /tree and /git, which other plugins or skills may use too.",
       "default": false
+    },
+    "offerReplies": {
+      "type": "boolean",
+      "title": "Offer files from replies",
+      "description": "After a reply, offer an Open button in the row above the prompt for the .md it named or the file it cited lines of.",
+      "default": false
     }
   }
 }

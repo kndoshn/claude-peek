@@ -77,7 +77,7 @@ name whose best match is one opens there. Lines you type win, and a whole path o
 `/md` offers Markdown without lines, as it is for reading rendered.
 
 While you type, `/peek re` completes to matching files, folders and repositories, with the folder
-each is in beside it. When a reply
+each is in beside it. With the setting *Offer files from replies* on, when a reply
 names a `.md` file or cites lines of a file, the row above the prompt offers **Open docs/plan.md**
 or **Open src/a.ts:118-120**, which opens it at those lines; **×** dismisses it.
 
@@ -99,7 +99,7 @@ focus the row (ctrl+x tab, or a click) and press its key.
 | **Copy** | tree | `c` | puts the tree on the clipboard |
 | **← Back** | after a link or a click | `b` | returns to where you came from |
 | **Close** | always | | closes the pane |
-| **Open docs/plan.md** | a reply named a `.md` or cited lines | `o` | opens the file it offers, at the lines cited |
+| **Open docs/plan.md** | a reply named a `.md` or cited lines (with *Offer files from replies* on) | `o` | opens the file it offers, at the lines cited |
 
 ### Quoting
 
@@ -184,6 +184,7 @@ quote is headed by the file alone. A passage from one file's diff in a commit is
 | --- | --- | --- |
 | Language | `auto`, `en`, `ja` | `auto`: Claude Code's `language` setting, then the locale (`LC_ALL`, `LC_MESSAGES`, `LANG`), then English |
 | Short commands /tree and /git | on, off | off, as other plugins or skills may use these names. On, `/tree [folder]` and `/git` do what `/peek [folder]` and `/peek git` do |
+| Offer files from replies | on, off | off, as the offer can get in the way. On, after a reply that names a `.md` or cites lines of a file, **Open** appears in the row above the prompt |
 
 ## Develop
 

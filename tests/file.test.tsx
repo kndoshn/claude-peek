@@ -581,7 +581,7 @@ test("in a dark theme the pane takes the terminal's background, in a light one t
   expect(r.opens.map(open => open.backgroundColor)).toEqual(['transparent', undefined])
 })
 
-test('a reply naming a .md offers it in the band, and the offer opens or goes away', async ($, on) => {
+test('a reply naming a .md offers it in the band, and the offer opens or goes away', { options: { offerReplies: true } }, async ($, on) => {
   const messages: Message[] = [user('write a plan'), assistant('Wrote docs/plan.md, please review.')]
   const r = engine(on, { '/proj/docs/plan.md': 'plan' }, messages)
   await turnEnds($)
@@ -597,7 +597,15 @@ test('a reply naming a .md offers it in the band, and the offer opens or goes aw
   expect(await button($, 'offer')).toBeUndefined()
 })
 
-test('the offer can be dismissed, and opening another file keeps it', async ($, on) => {
+test('without the setting, a reply naming a .md or citing lines offers nothing', async ($, on) => {
+  engine(on, { '/proj/docs/plan.md': 'plan', '/proj/src/a.ts': 'one\ntwo' }, [user('go'), assistant('Wrote docs/plan.md. The bug is at src/a.ts:1-2.')])
+  await turnEnds($)
+
+  expect(await button($, 'offer')).toBeUndefined()
+  expect(await button($, 'dismiss')).toBeUndefined()
+})
+
+test('the offer can be dismissed, and opening another file keeps it', { options: { offerReplies: true } }, async ($, on) => {
   engine(on, { '/proj/a.md': 'a', '/proj/b.md': 'b' }, [user('go'), assistant('done: a.md')])
   await turnEnds($)
 
@@ -607,7 +615,7 @@ test('the offer can be dismissed, and opening another file keeps it', async ($, 
   expect(await button($, 'offer')).toBeUndefined()
 })
 
-test('a reply citing lines of a file offers them in the band, which opens the file there', async ($, on) => {
+test('a reply citing lines of a file offers them in the band, which opens the file there', { options: { offerReplies: true } }, async ($, on) => {
   const code = 'one\ntwo\nthree\nfour'
   const messages: Message[] = [user('why?'), assistant('Edited src/b.ts. The bug is at src/a.ts:2-3.')]
   engine(on, { '/proj/src/a.ts': code, '/proj/src/b.ts': code }, messages)
@@ -633,7 +641,7 @@ test('a reply citing lines of a file offers them in the band, which opens the fi
   expect(await button($, 'offer')).toBeUndefined()
 })
 
-test('a reply naming no .md since the last prompt offers nothing', async ($, on) => {
+test('a reply naming no .md since the last prompt offers nothing', { options: { offerReplies: true } }, async ($, on) => {
   engine(on, { '/proj/a.md': 'a' }, [assistant('see a.md'), user('thanks'), assistant('ok')])
   await turnEnds($)
 

@@ -78,7 +78,9 @@ those tabs, so the band's buttons could not follow the view at once. Each view k
   A view switch brings the pane to the front, and the quote takes what was selected in that tab
   without a heading. Whether the pane is behind is read every second from `isShown` in
   `$.ui.panes()` and written to `nav`
-- **Open** offers the `.md` that the replies since the last message touched last (read rendered,
+- **Open** is shown only with the setting `offerReplies` on, as the offer can get in the way, so it
+  is off by default; with it off, an offer kept from when it was on goes at the end of the next
+  reply. It offers the `.md` that the replies since the last message touched last (read rendered,
   so without lines), or a file cited at its lines, as in `src/a.ts:12`. A code file or any other
   file named without lines is not offered: replies touch many file names along the way, and cite
   lines when they want a place looked at. Nothing is offered when the pane already shows that file
@@ -384,6 +386,7 @@ the locale, else English.
 | --- | --- | --- |
 | `language` | `auto`, `en`, `ja` | `auto` |
 | `shortCommands` | also register `/tree` and `/git` | `false` |
+| `offerReplies` | offer the `.md` a reply touched or the file it cited lines of, as **Open** | `false` |
 
 ### Limits and safety
 

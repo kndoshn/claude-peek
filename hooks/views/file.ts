@@ -187,5 +187,5 @@ export async function offerNamed($: Api): Promise<void> {
 }
 
 export async function dismissOffer($: Api): Promise<void> {
-  await update($, offer, () => null)
+  if (await read($, offer)) await update($, offer, () => null)
 }
